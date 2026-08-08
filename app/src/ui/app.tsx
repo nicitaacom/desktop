@@ -8,7 +8,6 @@ import {
   FoldoutType,
   SelectionType,
   HistoryTabMode,
-  CommitOptions,
 } from '../lib/app-state'
 import { Dispatcher } from './dispatcher'
 import { AppStore, GitHubUserStore, IssuesStore } from '../lib/stores'
@@ -1710,12 +1709,23 @@ export class App extends React.Component<IAppProps, IAppState> {
             onDismissed={onPopupDismissedFn}
           />
         )
-      case PopupType.Preferences:
+      case PopupType.Preferences: {
         let repository = this.getRepository()
 
         if (repository instanceof CloningRepository) {
           repository = null
         }
+
+        const { selectedState } = this.state
+        const commitOptions =
+          selectedState !== null &&
+          selectedState.type === SelectionType.Repository
+            ? {
+                skipCommitHooks: selectedState.state.skipCommitHooks,
+                signOffCommits: selectedState.state.signOffCommits,
+                allowEmptyCommit: selectedState.state.allowEmptyCommit,
+              }
+            : null
 
         return (
           <Preferences
@@ -1778,8 +1788,10 @@ export class App extends React.Component<IAppProps, IAppState> {
             alwaysUseCopilotForConflictResolution={
               this.state.alwaysUseCopilotForConflictResolution
             }
+            commitOptions={commitOptions}
           />
         )
+      }
       case PopupType.CopilotUserSettings:
         return (
           <CopilotSettingsDialog
@@ -2426,10 +2438,7 @@ export class App extends React.Component<IAppProps, IAppState> {
             onSubmitCommitMessage={popup.onSubmitCommitMessage}
             repositoryAccount={repositoryAccount}
             accounts={this.state.accounts}
-            skipCommitHooks={repositoryState.skipCommitHooks}
-            signOffCommits={repositoryState.signOffCommits}
             allowEmptyCommit={repositoryState.allowEmptyCommit}
-            onUpdateCommitOptions={this.onUpdateCommitOptions}
           />
         )
       case PopupType.MultiCommitOperation: {
@@ -3028,13 +3037,6 @@ export class App extends React.Component<IAppProps, IAppState> {
 
   private onConfirmWorktreeRemovalChanged = (value: boolean) => {
     this.props.dispatcher.setConfirmWorktreeRemovalSetting(value)
-  }
-
-  private onUpdateCommitOptions = (
-    repository: Repository,
-    options: Partial<CommitOptions>
-  ) => {
-    this.props.dispatcher.updateCommitOptions(repository, options)
   }
 
   private onSecretDelegatedBypassLinkClick = () => {
@@ -3986,13 +3988,7 @@ export class App extends React.Component<IAppProps, IAppState> {
           onCherryPick={this.startCherryPickWithoutBranch}
           pullRequestSuggestedNextAction={state.pullRequestSuggestedNextAction}
           showChangesFilter={state.showChangesFilter}
-          shouldShowGenerateCommitMessageCallOut={
-            !this.state.commitMessageGenerationButtonClicked
-          }
-          skipCommitHooks={selectedState.state.skipCommitHooks}
-          signOffCommits={selectedState.state.signOffCommits}
           allowEmptyCommit={selectedState.state.allowEmptyCommit}
-          onUpdateCommitOptions={this.onUpdateCommitOptions}
         />
       )
     } else if (selectedState.type === SelectionType.CloningRepository) {

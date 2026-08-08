@@ -40,6 +40,7 @@ import {
 } from '../../lib/helpers/default-branch'
 import { Prompts } from './prompts'
 import { Repository } from '../../models/repository'
+import { CommitOptions } from '../../lib/app-state'
 import { Notifications } from './notifications'
 import { Accessibility } from './accessibility'
 import { CopilotPreferences } from './copilot'
@@ -121,6 +122,12 @@ interface IPreferencesProps {
   readonly copilotQuotaSnapshotsByAccount: CopilotQuotaSnapshotsByAccount
   readonly byokProviders: ReadonlyArray<IBYOKProvider>
   readonly alwaysUseCopilotForConflictResolution: boolean
+
+  /**
+   * The commit options of the currently selected repository, or null when
+   * there's no repository selected to configure them for.
+   */
+  readonly commitOptions: CommitOptions | null
 }
 
 interface IPreferencesState {
@@ -189,6 +196,8 @@ interface IPreferencesState {
   readonly selectedTimeFormat?: TimeFormat
   readonly selectedNumberFormat?: INumberFormat
   readonly preferAbsoluteDates?: boolean
+
+  readonly commitOptions: CommitOptions
 }
 
 /**
@@ -199,6 +208,13 @@ const DefaultCustomIntegration: ICustomIntegration = {
   path: '',
   bundleID: undefined,
   arguments: TargetPathArgument,
+}
+
+/** Commit options to fall back on when there's no repository selected. */
+const DefaultCommitOptions: CommitOptions = {
+  skipCommitHooks: false,
+  signOffCommits: false,
+  allowEmptyCommit: false,
 }
 
 /** The app-level preferences component. */
@@ -259,6 +275,7 @@ export class Preferences extends React.Component<
       selectedTimeFormat: getTimeFormatPreference(),
       selectedNumberFormat: getNumberFormatPreference(),
       preferAbsoluteDates: getPreferAbsoluteDates(),
+      commitOptions: this.props.commitOptions ?? DefaultCommitOptions,
     }
   }
 
@@ -733,6 +750,13 @@ export class Preferences extends React.Component<
             onRepositoryIndicatorsEnabledChanged={
               this.onRepositoryIndicatorsEnabledChanged
             }
+            commitOptions={
+              this.props.commitOptions === null
+                ? null
+                : this.state.commitOptions
+            }
+            repositoryName={this.props.repository?.name ?? null}
+            onCommitOptionsChanged={this.onCommitOptionsChanged}
           />
         )
         break
@@ -766,6 +790,12 @@ export class Preferences extends React.Component<
     repositoryIndicatorsEnabled: boolean
   ) => {
     this.setState({ repositoryIndicatorsEnabled })
+  }
+
+  private onCommitOptionsChanged = (options: Partial<CommitOptions>) => {
+    this.setState(state => ({
+      commitOptions: { ...state.commitOptions, ...options },
+    }))
   }
 
   private onLockFileDeleted = () => {
@@ -1142,6 +1172,8 @@ export class Preferences extends React.Component<
       this.state.alwaysUseCopilotForConflictResolution
     )
 
+    this.saveCommitOptions()
+
     if (enableFormattingPreferences()) {
       if (this.state.selectedDateFormat !== undefined) {
         setDateFormatPreference(this.state.selectedDateFormat)
@@ -1161,6 +1193,27 @@ export class Preferences extends React.Component<
     }
 
     this.props.onDismissed()
+  }
+
+  /**
+   * Commit options are stored per repository so there's nothing to save unless
+   * we were given a repository (and its options) to begin with.
+   */
+  private saveCommitOptions() {
+    const { repository, commitOptions } = this.props
+    const newCommitOptions = this.state.commitOptions
+
+    if (repository === null || commitOptions === null) {
+      return
+    }
+
+    if (
+      commitOptions.skipCommitHooks !== newCommitOptions.skipCommitHooks ||
+      commitOptions.signOffCommits !== newCommitOptions.signOffCommits ||
+      commitOptions.allowEmptyCommit !== newCommitOptions.allowEmptyCommit
+    ) {
+      this.props.dispatcher.updateCommitOptions(repository, newCommitOptions)
+    }
   }
 
   private onTabClicked = (visualIndex: number) => {

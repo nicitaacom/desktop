@@ -4,16 +4,29 @@ import { Checkbox, CheckboxValue } from '../lib/checkbox'
 import { LinkButton } from '../lib/link-button'
 import { SamplesURL } from '../../lib/stats'
 import { isWindowsOpenSSHAvailable } from '../../lib/ssh/ssh'
+import { CommitOptions } from '../../lib/app-state'
+import { enableHooksEnvironment } from '../../lib/feature-flag'
 
 interface IAdvancedPreferencesProps {
   readonly useWindowsOpenSSH: boolean
   readonly optOutOfUsageTracking: boolean
   readonly useExternalCredentialHelper: boolean
   readonly repositoryIndicatorsEnabled: boolean
+
+  /**
+   * The commit options of the currently selected repository, or null when
+   * there's no repository selected to configure them for.
+   */
+  readonly commitOptions: CommitOptions | null
+
+  /** The name of the repository the commit options apply to */
+  readonly repositoryName: string | null
+
   readonly onUseWindowsOpenSSHChanged: (checked: boolean) => void
   readonly onOptOutofReportingChanged: (checked: boolean) => void
   readonly onUseExternalCredentialHelperChanged: (checked: boolean) => void
   readonly onRepositoryIndicatorsEnabledChanged: (enabled: boolean) => void
+  readonly onCommitOptionsChanged: (options: Partial<CommitOptions>) => void
 }
 
 interface IAdvancedPreferencesState {
@@ -72,6 +85,30 @@ export class Advanced extends React.Component<
     event: React.FormEvent<HTMLInputElement>
   ) => {
     this.props.onUseWindowsOpenSSHChanged(event.currentTarget.checked)
+  }
+
+  private onSkipCommitHooksChanged = (
+    event: React.FormEvent<HTMLInputElement>
+  ) => {
+    this.props.onCommitOptionsChanged({
+      skipCommitHooks: event.currentTarget.checked,
+    })
+  }
+
+  private onSignOffCommitsChanged = (
+    event: React.FormEvent<HTMLInputElement>
+  ) => {
+    this.props.onCommitOptionsChanged({
+      signOffCommits: event.currentTarget.checked,
+    })
+  }
+
+  private onAllowEmptyCommitChanged = (
+    event: React.FormEvent<HTMLInputElement>
+  ) => {
+    this.props.onCommitOptionsChanged({
+      allowEmptyCommit: event.currentTarget.checked,
+    })
   }
 
   private reportDesktopUsageLabel() {
@@ -150,7 +187,53 @@ export class Advanced extends React.Component<
             </p>
           </div>
         </div>
+        {this.renderCommitOptions()}
       </DialogContent>
+    )
+  }
+
+  private renderCommitOptions() {
+    const { commitOptions, repositoryName } = this.props
+
+    // No repository selected means there's nothing to configure these for.
+    if (commitOptions === null) {
+      return null
+    }
+
+    const { skipCommitHooks, signOffCommits, allowEmptyCommit } = commitOptions
+
+    return (
+      <div className="advanced-section">
+        <h2>Commit options</h2>
+        {enableHooksEnvironment() && (
+          <Checkbox
+            label="Bypass commit hooks"
+            value={skipCommitHooks ? CheckboxValue.On : CheckboxValue.Off}
+            onChange={this.onSkipCommitHooksChanged}
+            ariaDescribedBy="commit-options-description"
+          />
+        )}
+        <Checkbox
+          label="Add Signed-off-by trailer"
+          value={signOffCommits ? CheckboxValue.On : CheckboxValue.Off}
+          onChange={this.onSignOffCommitsChanged}
+          ariaDescribedBy="commit-options-description"
+        />
+        <Checkbox
+          label="Allow empty commit"
+          value={allowEmptyCommit ? CheckboxValue.On : CheckboxValue.Off}
+          onChange={this.onAllowEmptyCommitChanged}
+          ariaDescribedBy="commit-options-description"
+        />
+        <div id="commit-options-description" className="settings-description">
+          <p>
+            These options only apply to{' '}
+            <strong>{repositoryName ?? 'the current repository'}</strong> and
+            are reset when GitHub Desktop restarts. Allowing empty commits is
+            also reset after each commit.
+          </p>
+        </div>
+      </div>
     )
   }
 
