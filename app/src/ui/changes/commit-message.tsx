@@ -24,7 +24,7 @@ import { Commit, ICommitContext } from '../../models/commit'
 import { startTimer } from '../lib/timing'
 import { CommitWarning, CommitWarningIcon } from './commit-warning'
 import { LinkButton } from '../lib/link-button'
-import { CommitOptions, Foldout, FoldoutType } from '../../lib/app-state'
+import { Foldout, FoldoutType } from '../../lib/app-state'
 import { IAvatarUser, getAvatarUserFromAuthor } from '../../models/avatar'
 import { showContextualMenu } from '../../lib/menu-item'
 import { Account, isEnterpriseAccount } from '../../models/account'
@@ -62,13 +62,7 @@ import { formatCommitMessage } from '../../lib/format-commit-message'
 import { useRepoRulesLogic } from '../../lib/helpers/repo-rules'
 import { isDotCom } from '../../lib/endpoint-capabilities'
 import { WorkingDirectoryFileChange } from '../../models/status'
-import {
-  enableCommitMessageGeneration,
-  enableCopilotSdkCommitMessageGeneration,
-  enableHooksEnvironment,
-} from '../../lib/feature-flag'
-import { getAccountForCommitMessageGeneration } from '../../lib/get-account-for-repository'
-import { AriaLiveContainer } from '../accessibility/aria-live-container'
+import { enableCommitMessageGeneration } from '../../lib/feature-flag'
 import { HookProgress } from '../../lib/git'
 import { assertNever } from '../../lib/fatal-error'
 
@@ -117,7 +111,6 @@ interface ICommitMessageProps {
   readonly hookProgress: HookProgress | null
   readonly onShowCommitProgress: (() => void) | undefined
   readonly isGeneratingCommitMessage?: boolean
-  readonly shouldShowGenerateCommitMessageCallOut?: boolean
   readonly commitToAmend: Commit | null
   readonly placeholder: string
   readonly prepopulateCommitSummary: boolean
@@ -178,8 +171,6 @@ interface ICommitMessageProps {
     mustOverrideExistingMessage: boolean
   ) => void
 
-  readonly onCancelGenerateCommitMessage?: () => void
-
   /**
    * Called when the component has given the commit message focus due to
    * `focusCommitMessage` being set. Used to reset the `focusCommitMessage`
@@ -207,37 +198,13 @@ interface ICommitMessageProps {
   readonly submitButtonAriaDescribedBy?: string
 
   /**
-   * Whether or not to skip blocking commit hooks when creating commits
-   * by means of passing the `--no-verify` flag to git commit
-   */
-  readonly skipCommitHooks: boolean
-
-  /**
-   * Whether or not to add a `Signed-off-by` trailer to commit messages
-   * by means of passing the `--signoff` flag to git commit
-   */
-  readonly signOffCommits: boolean
-
-  /**
    * Whether or not to allow creating a commit without any file changes
    * by means of passing the `--allow-empty` flag to git commit.
    * This option resets to false after each commit.
+   *
+   * Configured in Options > Advanced.
    */
   readonly allowEmptyCommit: boolean
-
-  /**
-   * Whether or not to show the "Allow empty commit" option in the commit
-   * options context menu. Should be false when the CommitMessage component
-   * is used in contexts where empty commits are not applicable, such as the
-   * squash commit dialog.
-   */
-  readonly showAllowEmptyCommitOption?: boolean
-
-  /** Callback to set commit options for the given repository */
-  readonly onUpdateCommitOptions: (
-    repository: Repository,
-    options: Partial<CommitOptions>
-  ) => void
 }
 
 interface ICommitMessageState {
@@ -962,170 +929,12 @@ export class CommitMessage extends React.Component<
     }
   }
 
-  private onCopilotButtonClick = async (
-    e: React.MouseEvent<HTMLButtonElement>
-  ) => {
-    e.preventDefault()
-
-    if (this.props.isGeneratingCommitMessage) {
-      if (this.canCancelGenerateCommitMessage) {
-        this.props.onCancelGenerateCommitMessage?.()
-      }
-      return
-    }
-
-    const { commitMessage } = this.state
-
-    this.props.onGenerateCommitMessage?.(
-      this.props.filesSelected,
-      !!commitMessage.summary || !!commitMessage.description
-    )
-  }
-
   private onCoAuthorToggleButtonClick = async (
     e: React.MouseEvent<HTMLButtonElement>
   ) => {
     e.preventDefault()
 
     this.onToggleCoAuthors()
-  }
-
-  private renderCopilotButton() {
-    if (!this.isCopilotButtonEnabled) {
-      return null
-    }
-
-    const {
-      filesSelected,
-      isCommitting,
-      isGeneratingCommitMessage,
-      commitToAmend,
-      shouldShowGenerateCommitMessageCallOut,
-    } = this.props
-
-    const noFilesSelected = filesSelected.length === 0
-    const noChangesAvailable = !commitToAmend && noFilesSelected
-
-    let ariaLabel = 'Generate commit message with Copilot'
-    const canCancelGenerateCommitMessage = this.canCancelGenerateCommitMessage
-    const showCancelGenerateCommitMessage =
-      isGeneratingCommitMessage === true && canCancelGenerateCommitMessage
-
-    if (!isGeneratingCommitMessage && noChangesAvailable) {
-      ariaLabel += '. Files must be selected to generate a commit message.'
-    } else if (showCancelGenerateCommitMessage) {
-      ariaLabel = 'Cancel generating commit details'
-    } else if (isGeneratingCommitMessage) {
-      ariaLabel = 'Generating commit details…'
-    }
-
-    return (
-      <>
-        {this.isCoAuthorInputEnabled && <div className="separator" />}
-        <Button
-          className="copilot-button"
-          onClick={this.onCopilotButtonClick}
-          ariaLabel={ariaLabel}
-          tooltip={ariaLabel}
-          disabled={
-            isCommitting === true ||
-            (isGeneratingCommitMessage === true &&
-              !canCancelGenerateCommitMessage) ||
-            (!isGeneratingCommitMessage && noChangesAvailable)
-          }
-        >
-          <AriaLiveContainer
-            message={
-              isGeneratingCommitMessage ? 'Generating commit details…' : ''
-            }
-          />
-          <Octicon
-            symbol={
-              showCancelGenerateCommitMessage
-                ? octicons.squareCircle
-                : octicons.copilot
-            }
-          />
-          {shouldShowGenerateCommitMessageCallOut && (
-            <span className="call-to-action-bubble">New</span>
-          )}
-        </Button>
-      </>
-    )
-  }
-
-  private renderCommitOptionsButton() {
-    const ariaLabel = 'Configure commit options'
-
-    return (
-      <>
-        {(this.isCoAuthorInputEnabled || this.isCopilotButtonEnabled) && (
-          <div className="separator" />
-        )}
-        <Button
-          className={classNames('commit-options-button', {
-            'default-options':
-              !this.props.skipCommitHooks &&
-              !this.props.signOffCommits &&
-              !this.props.allowEmptyCommit,
-          })}
-          onClick={this.onCommitOptionsButtonClick}
-          ariaLabel={ariaLabel}
-          tooltip={ariaLabel}
-        >
-          <Octicon symbol={octicons.gear} />
-        </Button>
-      </>
-    )
-  }
-
-  private onCommitOptionsButtonClick = (
-    e: React.MouseEvent<HTMLButtonElement>
-  ) => {
-    e.preventDefault()
-
-    const items: IMenuItem[] = []
-
-    if (enableHooksEnvironment()) {
-      items.push({
-        type: 'checkbox',
-        checked: this.props.skipCommitHooks,
-        label: __DARWIN__ ? 'Bypass Commit Hooks' : 'Bypass Commit hooks',
-        action: () => {
-          this.props.onUpdateCommitOptions(this.props.repository, {
-            skipCommitHooks: !this.props.skipCommitHooks,
-          })
-        },
-      })
-    }
-
-    items.push({
-      type: 'checkbox',
-      checked: this.props.signOffCommits,
-      label: __DARWIN__
-        ? 'Add Signed-off-by Trailer'
-        : 'Add Signed-off-by trailer',
-      action: () => {
-        this.props.onUpdateCommitOptions(this.props.repository, {
-          signOffCommits: !this.props.signOffCommits,
-        })
-      },
-    })
-
-    if (this.props.showAllowEmptyCommitOption) {
-      items.push({
-        type: 'checkbox',
-        checked: this.props.allowEmptyCommit,
-        label: __DARWIN__ ? 'Allow Empty Commit' : 'Allow empty commit',
-        action: () => {
-          this.props.onUpdateCommitOptions(this.props.repository, {
-            allowEmptyCommit: !this.props.allowEmptyCommit,
-          })
-        },
-      })
-    }
-
-    showContextualMenu(items)
   }
 
   private renderCoAuthorToggleButton() {
@@ -1205,33 +1014,6 @@ export class CommitMessage extends React.Component<
     }
   }
 
-  /**
-   * Whether the Copilot button should be available
-   */
-  private get isCopilotButtonEnabled() {
-    const { accounts, onGenerateCommitMessage } = this.props
-    return (
-      accounts.some(enableCommitMessageGeneration) &&
-      onGenerateCommitMessage !== undefined
-    )
-  }
-
-  /**
-   * Whether an in-flight commit message generation can be cancelled.
-   */
-  private get canCancelGenerateCommitMessage() {
-    const account = getAccountForCommitMessageGeneration(
-      this.props.accounts,
-      this.props.repository
-    )
-
-    return (
-      account !== undefined &&
-      enableCopilotSdkCommitMessageGeneration(account) &&
-      this.props.onCancelGenerateCommitMessage !== undefined
-    )
-  }
-
   private renderActionBar() {
     const { isCommitting, isGeneratingCommitMessage } = this.props
 
@@ -1239,13 +1021,7 @@ export class CommitMessage extends React.Component<
       disabled: isCommitting === true || isGeneratingCommitMessage === true,
     })
 
-    return (
-      <div className={className}>
-        {this.renderCoAuthorToggleButton()}
-        {this.renderCopilotButton()}
-        {this.renderCommitOptionsButton()}
-      </div>
-    )
+    return <div className={className}>{this.renderCoAuthorToggleButton()}</div>
   }
 
   private renderAmendCommitNotice() {

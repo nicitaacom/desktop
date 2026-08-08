@@ -150,29 +150,9 @@
     }
   }
 
-  .copilot-button {
+  .co-authors-toggle {
     color: var(--text-secondary-color);
 
-    &:not([aria-disabled='true']):hover {
-      color: var(--text-color);
-    }
-
-    &:focus {
-      outline-offset: 2px;
-    }
-
-    // Override default button width for as long as we have the call-to-action
-    // bubble in the button. DELETE AFTER THE CALL-TO-ACTION BUBBLE IS REMOVED
-    width: auto !important;
-  }
-
-  .co-authors-toggle,
-  .commit-options-button {
-    color: var(--text-secondary-color);
-
-    &.default-options {
-      color: var(--text-secondary-color);
-    }
     &:not([aria-disabled='true']):hover {
       color: var(--text-color);
     }
@@ -281,9 +261,7 @@
       }
     }
 
-    .co-authors-toggle,
-    .copilot-button,
-    .commit-options-button {
+    .co-authors-toggle {
       // button reset styles
       border: none;
       border-radius: 0px;
