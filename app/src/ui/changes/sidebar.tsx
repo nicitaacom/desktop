@@ -7,7 +7,6 @@ import {
   RebaseConflictState,
   isRebaseConflictState,
   ChangesSelectionKind,
-  CommitOptions,
 } from '../../lib/app-state'
 import { Repository } from '../../models/repository'
 import { Dispatcher } from '../dispatcher'
@@ -59,7 +58,6 @@ interface IChangesSidebarProps {
   readonly hookProgress: HookProgress | null
   readonly onShowCommitProgress: (() => void) | undefined
   readonly isGeneratingCommitMessage: boolean
-  readonly shouldShowGenerateCommitMessageCallOut: boolean
   readonly commitToAmend: Commit | null
   readonly isPushPullFetchInProgress: boolean
   // Used in receiveProps, no-unused-prop-types doesn't know that
@@ -97,29 +95,13 @@ interface IChangesSidebarProps {
   readonly showChangesFilter: boolean
 
   /**
-   * Whether or not to skip blocking commit hooks when creating commits
-   * by means of passing the `--no-verify` flag to git commit
-   */
-  readonly skipCommitHooks: boolean
-
-  /**
-   * Whether or not to add a `Signed-off-by` trailer to commit messages
-   * by means of passing the `--signoff` flag to git commit
-   */
-  readonly signOffCommits: boolean
-
-  /**
    * Whether or not to allow creating a commit without any file changes
    * by means of passing the `--allow-empty` flag to git commit.
    * This option resets to false after each commit.
+   *
+   * Configured in Options > Advanced.
    */
   readonly allowEmptyCommit: boolean
-
-  /** Callback to set commit options for the given repository */
-  readonly onUpdateCommitOptions: (
-    repository: Repository,
-    options: Partial<CommitOptions>
-  ) => void
 }
 
 export class ChangesSidebar extends React.Component<IChangesSidebarProps, {}> {
@@ -457,9 +439,6 @@ export class ChangesSidebar extends React.Component<IChangesSidebarProps, {}> {
           hookProgress={this.props.hookProgress}
           onShowCommitProgress={this.props.onShowCommitProgress}
           isGeneratingCommitMessage={this.props.isGeneratingCommitMessage}
-          shouldShowGenerateCommitMessageCallOut={
-            this.props.shouldShowGenerateCommitMessageCallOut
-          }
           commitToAmend={this.props.commitToAmend}
           showCoAuthoredBy={showCoAuthoredBy}
           coAuthors={coAuthors}
@@ -478,10 +457,7 @@ export class ChangesSidebar extends React.Component<IChangesSidebarProps, {}> {
           accounts={this.props.accounts}
           fileListFilter={this.props.changes.fileListFilter}
           showChangesFilter={this.props.showChangesFilter}
-          skipCommitHooks={this.props.skipCommitHooks}
-          signOffCommits={this.props.signOffCommits}
           allowEmptyCommit={this.props.allowEmptyCommit}
-          onUpdateCommitOptions={this.props.onUpdateCommitOptions}
         />
         {this.renderUndoCommit(rebaseConflictState)}
       </div>

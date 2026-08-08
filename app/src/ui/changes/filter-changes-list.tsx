@@ -20,7 +20,7 @@ import {
 import { Account } from '../../models/account'
 import { Author, UnknownAuthor } from '../../models/author'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
-import { CommitOptions, IFileListFilterState } from '../../lib/app-state'
+import { IFileListFilterState } from '../../lib/app-state'
 import {
   isSafeFileExtension,
   DefaultEditorLabel,
@@ -162,7 +162,6 @@ interface IFilterChangesListProps {
   readonly hookProgress: HookProgress | null
   readonly onShowCommitProgress?: (() => void) | undefined
   readonly isGeneratingCommitMessage: boolean
-  readonly shouldShowGenerateCommitMessageCallOut: boolean
   readonly commitToAmend: Commit | null
   readonly currentBranchProtected: boolean
   readonly currentRepoRulesInfo: RepoRulesInfo
@@ -225,29 +224,13 @@ interface IFilterChangesListProps {
   readonly showChangesFilter: boolean
 
   /**
-   * Whether or not to skip blocking commit hooks when creating commits
-   * by means of passing the `--no-verify` flag to git commit
-   */
-  readonly skipCommitHooks: boolean
-
-  /**
-   * Whether or not to add a `Signed-off-by` trailer to commit messages
-   * by means of passing the `--signoff` flag to git commit
-   */
-  readonly signOffCommits: boolean
-
-  /**
    * Whether or not to allow creating a commit without any file changes
    * by means of passing the `--allow-empty` flag to git commit.
    * This option resets to false after each commit.
+   *
+   * Configured in Options > Advanced.
    */
   readonly allowEmptyCommit: boolean
-
-  /** Callback to set commit options for the given repository */
-  readonly onUpdateCommitOptions: (
-    repository: Repository,
-    options: Partial<CommitOptions>
-  ) => void
 }
 
 interface IFilterChangesListState {
@@ -899,7 +882,6 @@ export class FilterChangesList extends React.Component<
       commitToAmend,
       currentBranchProtected,
       currentRepoRulesInfo: currentRepoRulesInfo,
-      shouldShowGenerateCommitMessageCallOut,
     } = this.props
 
     if (rebaseConflictState !== null) {
@@ -974,9 +956,6 @@ export class FilterChangesList extends React.Component<
         hookProgress={hookProgress}
         onShowCommitProgress={this.props.onShowCommitProgress}
         isGeneratingCommitMessage={isGeneratingCommitMessage}
-        shouldShowGenerateCommitMessageCallOut={
-          shouldShowGenerateCommitMessageCallOut
-        }
         commitToAmend={commitToAmend}
         showCoAuthoredBy={this.props.showCoAuthoredBy}
         coAuthors={this.props.coAuthors}
@@ -1000,7 +979,6 @@ export class FilterChangesList extends React.Component<
         }
         onPersistCommitMessage={this.onPersistCommitMessage}
         onGenerateCommitMessage={this.onGenerateCommitMessage}
-        onCancelGenerateCommitMessage={this.onCancelGenerateCommitMessage}
         onCommitMessageFocusSet={this.onCommitMessageFocusSet}
         onRefreshAuthor={this.onRefreshAuthor}
         onShowPopup={this.onShowPopup}
@@ -1012,11 +990,7 @@ export class FilterChangesList extends React.Component<
         accounts={this.props.accounts}
         onSuccessfulCommitCreated={this.onSuccessfulCommitCreated}
         submitButtonAriaDescribedBy={'hidden-changes-warning'}
-        skipCommitHooks={this.props.skipCommitHooks}
-        signOffCommits={this.props.signOffCommits}
         allowEmptyCommit={this.props.allowEmptyCommit}
-        showAllowEmptyCommitOption={true}
-        onUpdateCommitOptions={this.props.onUpdateCommitOptions}
       />
     )
   }
@@ -1067,10 +1041,6 @@ export class FilterChangesList extends React.Component<
           this.props.repository,
           filesSelected
         )
-  }
-
-  private onCancelGenerateCommitMessage = () => {
-    this.props.dispatcher.cancelGenerateCommitMessage(this.props.repository)
   }
 
   private onShowPopup = (p: Popup) => this.props.dispatcher.showPopup(p)

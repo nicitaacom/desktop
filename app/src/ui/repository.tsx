@@ -15,7 +15,6 @@ import {
   RepositorySectionTab,
   ChangesSelectionKind,
   IConstrainedValue,
-  CommitOptions,
 } from '../lib/app-state'
 import { Dispatcher } from './dispatcher'
 import { IssuesStore, GitHubUserStore } from '../lib/stores'
@@ -62,7 +61,6 @@ interface IRepositoryViewProps {
   readonly commitSpellcheckEnabled: boolean
   readonly showCommitLengthWarning: boolean
   readonly accounts: ReadonlyArray<Account>
-  readonly shouldShowGenerateCommitMessageCallOut: boolean
 
   /**
    * A value indicating whether or not the application is currently presenting
@@ -118,29 +116,13 @@ interface IRepositoryViewProps {
   readonly showChangesFilter: boolean
 
   /**
-   * Whether or not to skip blocking commit hooks when creating commits
-   * by means of passing the `--no-verify` flag to git commit
-   */
-  readonly skipCommitHooks: boolean
-
-  /**
-   * Whether or not to add a `Signed-off-by` trailer to commit messages
-   * by means of passing the `--signoff` flag to git commit
-   */
-  readonly signOffCommits: boolean
-
-  /**
    * Whether or not to allow creating a commit without any file changes
    * by means of passing the `--allow-empty` flag to git commit.
    * This option resets to false after each commit.
+   *
+   * Configured in Options > Advanced.
    */
   readonly allowEmptyCommit: boolean
-
-  /** Callback to set commit options for the given repository */
-  readonly onUpdateCommitOptions: (
-    repository: Repository,
-    options: Partial<CommitOptions>
-  ) => void
 }
 
 interface IRepositoryViewState {
@@ -295,9 +277,6 @@ export class RepositoryView extends React.Component<
             : undefined
         }
         isGeneratingCommitMessage={this.props.state.isGeneratingCommitMessage}
-        shouldShowGenerateCommitMessageCallOut={
-          this.props.shouldShowGenerateCommitMessageCallOut
-        }
         commitToAmend={this.props.state.commitToAmend}
         isPushPullFetchInProgress={this.props.state.isPushPullFetchInProgress}
         focusCommitMessage={this.props.focusCommitMessage}
@@ -320,10 +299,7 @@ export class RepositoryView extends React.Component<
         commitSpellcheckEnabled={this.props.commitSpellcheckEnabled}
         showCommitLengthWarning={this.props.showCommitLengthWarning}
         showChangesFilter={this.props.showChangesFilter}
-        skipCommitHooks={this.props.skipCommitHooks}
-        signOffCommits={this.props.signOffCommits}
         allowEmptyCommit={this.props.allowEmptyCommit}
-        onUpdateCommitOptions={this.props.onUpdateCommitOptions}
       />
     )
   }
