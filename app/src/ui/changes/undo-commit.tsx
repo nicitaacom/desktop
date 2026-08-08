@@ -52,6 +52,7 @@ export class UndoCommit extends React.Component<IUndoCommitProps, {}> {
             disabled={disabled}
             onClick={this.props.onUndo}
             tooltip={title}
+            tabIndex={-1}
           >
             Undo
           </Button>
