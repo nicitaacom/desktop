@@ -4,6 +4,7 @@ import {
   Terminal as XTermTerminal,
 } from '@xterm/xterm'
 import React from 'react'
+import { clipboard } from 'electron'
 import { getMonospaceFontFamily } from './get-monospace-font-family'
 import { TerminalOutput } from '../lib/git'
 
@@ -51,6 +52,27 @@ export class Terminal extends React.Component<TerminalProps> {
     })
 
     this.terminal.attachCustomKeyEventHandler((key: KeyboardEvent) => {
+      const copyModifier = __DARWIN__
+        ? key.metaKey && !key.ctrlKey && !key.shiftKey
+        : key.ctrlKey && !key.metaKey
+
+      if (
+        key.type === 'keydown' &&
+        key.key.toLowerCase() === 'c' &&
+        copyModifier &&
+        !key.altKey
+      ) {
+        // xterm selections aren't DOM selections. Copy them explicitly before
+        // the terminal can consume the shortcut or clear the selection.
+        const selection = this.terminal?.getSelection()
+        if (selection) {
+          clipboard.writeText(selection)
+          key.preventDefault()
+          key.stopPropagation()
+          return false
+        }
+      }
+
       if (key.key === 'Tab') {
         // We don't want to handle tab key events in the terminal as it
         // breaks tab navigation in the app. The terminal is read only and
