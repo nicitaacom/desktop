@@ -204,46 +204,47 @@ export async function getCommits(
   })
 }
 
-/**
- * How many commits a single filtered history query returns. Searching runs one
- * git query for the whole history instead of the scroll-driven batches used by
- * the unfiltered list, so this is the ceiling for one search.
- */
-export const CommitSearchLimit = 500
+export interface ICommitSearchOptions {
+  readonly limit: number
+  readonly includeDescriptions: boolean
+}
 
-/**
- * Find commits anywhere in `revisionRange` whose **summary** contains
- * `searchText`, ignoring case. The body is deliberately not matched: a long
- * description mentioning a word buries the commits actually titled with it.
- *
- * Git has no subject-only equivalent of `--grep`, which tests the whole message.
- * Every summary match is therefore also a `--grep` match, so git narrows the
- * history first and the summary check runs over that much smaller result.
- */
+export interface ICommitSearchResult {
+  readonly commits: ReadonlyArray<Commit>
+  readonly searchedCount: number
+  readonly hasMore: boolean
+}
+
+export const DefaultCommitSearchOptions: ICommitSearchOptions = {
+  limit: 1000,
+  includeDescriptions: false,
+}
+
+/** Search a bounded slice of history, rather than limiting the matching results. */
 export async function searchCommits(
   repository: Repository,
   revisionRange: string,
-  searchText: string
-): Promise<ReadonlyArray<Commit>> {
-  const text = searchText.trim()
-
-  if (text.length === 0) {
-    return new Array<Commit>()
+  searchText: string,
+  options: ICommitSearchOptions = DefaultCommitSearchOptions
+): Promise<ICommitSearchResult> {
+  const needle = searchText.trim().toLowerCase()
+  if (needle.length === 0) {
+    return { commits: [], searchedCount: 0, hasMore: false }
   }
 
-  // --grep is a POSIX basic regular expression by default, so a summary holding
-  // "(" or "?" would be an invalid pattern. --fixed-strings makes it literal.
-  const commits = await getCommits(
-    repository,
-    revisionRange,
-    CommitSearchLimit,
-    undefined,
-    [`--grep=${text}`, '--regexp-ignore-case', '--fixed-strings']
-  )
-
-  const needle = text.toLowerCase()
-
-  return commits.filter(c => c.summary.toLowerCase().includes(needle))
+  // Fetch one extra commit to distinguish the depth limit from exhausted history.
+  // Do not use --grep here: it filters before --max-count and cannot match SHAs.
+  const history = await getCommits(repository, revisionRange, options.limit + 1)
+  const candidates = history.slice(0, options.limit)
+  return {
+    commits: candidates.filter(
+      c =>
+        c.sha.toLowerCase().startsWith(needle) ||
+        c.summary.toLowerCase().includes(needle)
+    ),
+    searchedCount: candidates.length,
+    hasMore: history.length > options.limit,
+  }
 }
 
 /** This interface contains information of a changeset. */

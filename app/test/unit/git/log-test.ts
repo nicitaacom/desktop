@@ -72,15 +72,21 @@ describe('git/log', () => {
       const path = await setupFixtureRepository(t, 'test-repo-with-tags')
       const repository = new Repository(path, -1, null, false)
 
-      assert.equal((await searchCommits(repository, 'HEAD', '')).length, 0)
-      assert.equal((await searchCommits(repository, 'HEAD', '   ')).length, 0)
+      assert.equal(
+        (await searchCommits(repository, 'HEAD', '')).commits.length,
+        0
+      )
+      assert.equal(
+        (await searchCommits(repository, 'HEAD', '   ')).commits.length,
+        0
+      )
     })
 
     it('matches a commit summary', async t => {
       const path = await setupFixtureRepository(t, 'test-repo-with-tags')
       const repository = new Repository(path, -1, null, false)
 
-      const commits = await searchCommits(repository, 'HEAD', 'first')
+      const { commits } = await searchCommits(repository, 'HEAD', 'first')
 
       assert.equal(commits.length, 1)
       assert.equal(commits[0].summary, 'first')
@@ -90,7 +96,7 @@ describe('git/log', () => {
       const path = await setupFixtureRepository(t, 'test-repo-with-tags')
       const repository = new Repository(path, -1, null, false)
 
-      const commits = await searchCommits(repository, 'HEAD', 'FIRST')
+      const { commits } = await searchCommits(repository, 'HEAD', 'FIRST')
 
       assert.equal(commits.length, 1)
       assert.equal(commits[0].summary, 'first')
@@ -102,7 +108,7 @@ describe('git/log', () => {
 
       // An unbalanced bracket is an invalid POSIX pattern — without
       // --fixed-strings git exits non-zero instead of returning no matches.
-      const commits = await searchCommits(repository, 'HEAD', 'first[')
+      const { commits } = await searchCommits(repository, 'HEAD', 'first[')
 
       assert.equal(commits.length, 0)
     })
@@ -113,7 +119,7 @@ describe('git/log', () => {
 
       // Every returned commit has to carry the text in its summary, never only
       // in the description.
-      const commits = await searchCommits(repository, 'HEAD', 'e')
+      const { commits } = await searchCommits(repository, 'HEAD', 'e')
 
       for (const commit of commits) {
         assert.ok(
@@ -123,11 +129,24 @@ describe('git/log', () => {
       }
     })
 
+    it('matches full and abbreviated hashes, ignoring case', async t => {
+      const path = await setupFixtureRepository(t, 'test-repo-with-tags')
+      const repository = new Repository(path, -1, null, false)
+      const sha = '7cd6640e5b6ca8dbfd0b33d0281ebe702127079c'
+      for (const query of [sha, sha.slice(0, 8).toUpperCase()]) {
+        const result = await searchCommits(repository, 'HEAD', query)
+        assert.deepEqual(
+          result.commits.map(c => c.sha),
+          [sha]
+        )
+      }
+    })
+
     it('returns each commit once', async t => {
       const path = await setupFixtureRepository(t, 'test-repo-with-tags')
       const repository = new Repository(path, -1, null, false)
 
-      const commits = await searchCommits(repository, 'HEAD', 'first')
+      const { commits } = await searchCommits(repository, 'HEAD', 'first')
       const shas = new Set(commits.map(c => c.sha))
 
       assert.equal(shas.size, commits.length)

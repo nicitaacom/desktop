@@ -251,7 +251,6 @@ import {
 } from '../git/lfs'
 import { inferLastPushForRepository } from '../infer-last-push-for-repository'
 import { updateMenuState } from '../menu-update'
-import { merge } from '../merge'
 import {
   IMatchedGitHubRepository,
   matchGitHubRepository,
@@ -577,6 +576,8 @@ const selectedCopilotModelsByAccountKey = 'selected-copilot-models-by-account'
 export const showChangesFilterDefault = true
 
 export class AppStore extends TypedBaseStore<IAppState> {
+  private readonly historyRequests = new Map<number, number>()
+
   private readonly gitStoreCache: GitStoreCache
 
   private accounts: ReadonlyArray<Account> = new Array<Account>()
@@ -1798,17 +1799,39 @@ export class AppStore extends TypedBaseStore<IAppState> {
       if (
         tipIsUnchanged &&
         formState.kind === HistoryTabMode.History &&
-        commitSHAs.length > 0
+        (commitSHAs.length > 0 ||
+          (compareState.isCommitSearch &&
+            compareState.commitFilterText.trim().length > 0))
       ) {
         // don't refresh the history view here because we know nothing important
         // has changed and we don't want to rebuild this state
         return
       }
 
+      if (
+        compareState.isCommitSearch &&
+        compareState.commitFilterText.trim().length > 0
+      ) {
+        this.repositoryStateCache.updateCompareState(repository, () => ({
+          formState: { kind: HistoryTabMode.History },
+          commitSearchLimit:
+            previousTip !== null && previousTip !== currentSha
+              ? 1000
+              : compareState.commitSearchLimit,
+          tip: currentSha,
+          showBranchList: false,
+        }))
+        return this._searchCommits(repository, compareState.commitFilterText)
+      }
+
+      const request = this.invalidateHistoryRequest(repository)
       // load initial group of commits for current branch
       const commits = await gitStore.loadCommitBatch('HEAD', 0)
 
-      if (commits === null) {
+      if (
+        commits === null ||
+        this.historyRequests.get(repository.id) !== request
+      ) {
         return
       }
 
@@ -1821,7 +1844,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
         formState: newState,
         commitSHAs: commits,
         filterText: '',
-        commitFilterText: '',
         isSearchingCommits: false,
         showBranchList: false,
       }))
@@ -1843,6 +1865,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
   ) {
     const gitStore = this.gitStoreCache.get(repository)
 
+    const request = this.invalidateHistoryRequest(repository)
     const comparisonBranch = action.branch
     const compare = await gitStore.getCompareCommits(
       comparisonBranch,
@@ -1859,7 +1882,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.statsStore.increment('defaultBranchComparisons')
     }
 
-    if (compare == null) {
+    if (
+      compare == null ||
+      this.historyRequests.get(repository.id) !== request
+    ) {
       return
     }
 
@@ -1943,88 +1969,129 @@ export class AppStore extends TypedBaseStore<IAppState> {
     })
   }
 
+  private invalidateHistoryRequest(repository: Repository) {
+    const request = (this.historyRequests.get(repository.id) ?? 0) + 1
+    this.historyRequests.set(repository.id, request)
+    return request
+  }
+
   /** This shouldn't be called directly. See `Dispatcher`. */
   public _updateCompareForm<K extends keyof ICompareFormUpdate>(
     repository: Repository,
     newState: Pick<ICompareFormUpdate, K>
   ) {
+    const affectsSearch =
+      'commitFilterText' in newState ||
+      'commitSearchLimit' in newState ||
+      'includeCommitDescriptions' in newState ||
+      'isCommitSearch' in newState
+    if (affectsSearch) {
+      this.invalidateHistoryRequest(repository)
+    }
     this.repositoryStateCache.updateCompareState(repository, state => {
-      return merge(state, newState)
+      const merged = { ...state, ...newState }
+      return {
+        ...merged,
+        ...('isCommitSearch' in newState ? { tip: null } : {}),
+        ...(affectsSearch
+          ? {
+              isSearchingCommits:
+                merged.isCommitSearch &&
+                merged.commitFilterText.trim().length > 0,
+              commitSearchFailed: false,
+            }
+          : {}),
+      }
     })
-
     this.emitUpdate()
   }
 
-  /**
-   * Filter the history list down to the commits matching `searchText`, or bring
-   * the unfiltered history back when the text is empty.
-   *
-   * This shouldn't be called directly. See `Dispatcher`.
-   */
+  /** Search the current branch; only the latest request may publish its result. */
   public async _searchCommits(
     repository: Repository,
     searchText: string
   ): Promise<void> {
     const { compareState } = this.repositoryStateCache.get(repository)
-
-    if (compareState.formState.kind !== HistoryTabMode.History) {
+    if (
+      compareState.formState.kind !== HistoryTabMode.History ||
+      !compareState.isCommitSearch
+    ) {
       return
     }
-
+    const request = this.invalidateHistoryRequest(repository)
     if (searchText.trim().length === 0) {
-      // Clearing the tip makes _executeCompare rebuild the history instead of
-      // taking its unchanged-tip early return, which would leave the filtered
-      // SHAs on screen.
       this.repositoryStateCache.updateCompareState(repository, () => ({
         commitFilterText: '',
+        commitSearchLimit: 1000,
         isSearchingCommits: false,
+        commitSearchFailed: false,
         tip: null,
       }))
-
-      return this._executeCompare(repository, {
-        kind: HistoryTabMode.History,
-      })
+      return this._executeCompare(repository, { kind: HistoryTabMode.History })
     }
 
+    const gitStore = this.gitStoreCache.get(repository)
+    const tip = gitStore.tip
+    const sha =
+      tip.kind === TipState.Valid
+        ? tip.branch.tip.sha
+        : tip.kind === TipState.Detached
+        ? tip.currentSha
+        : null
     this.repositoryStateCache.updateCompareState(repository, () => ({
       commitFilterText: searchText,
       isSearchingCommits: true,
+      commitSearchFailed: false,
+      tip: sha,
     }))
     this.emitUpdate()
 
-    const gitStore = this.gitStoreCache.get(repository)
-    const commitSHAs = await gitStore.searchCommitHistory('HEAD', searchText)
-
-    if (commitSHAs === null) {
-      this.repositoryStateCache.updateCompareState(repository, () => ({
-        isSearchingCommits: false,
-      }))
-      return this.emitUpdate()
+    const result =
+      sha === null
+        ? { commitSHAs: [], searchedCount: 0, hasMore: false }
+        : await gitStore.searchCommitHistory(sha, searchText, {
+            limit: compareState.commitSearchLimit,
+            includeDescriptions: compareState.includeCommitDescriptions,
+          })
+    const current = this.repositoryStateCache.get(repository).compareState
+    const currentTip = gitStore.tip
+    const currentSha =
+      currentTip.kind === TipState.Valid
+        ? currentTip.branch.tip.sha
+        : currentTip.kind === TipState.Detached
+        ? currentTip.currentSha
+        : null
+    if (
+      this.historyRequests.get(repository.id) !== request ||
+      !current.isCommitSearch ||
+      current.formState.kind !== HistoryTabMode.History ||
+      currentSha !== sha
+    ) {
+      return
     }
-
     this.repositoryStateCache.updateCompareState(repository, () => ({
-      commitSHAs,
+      commitSHAs: result?.commitSHAs ?? [],
       isSearchingCommits: false,
+      commitSearchFailed: result === null,
+      commitSearchCount: result?.searchedCount ?? 0,
+      commitSearchHasMore: result?.hasMore ?? false,
     }))
-
-    if (commitSHAs.length > 0) {
-      this.updateOrSelectFirstCommit(repository, commitSHAs)
-    }
-
-    return this.emitUpdate()
+    this.updateOrSelectFirstCommit(repository, result?.commitSHAs ?? [])
+    this.emitUpdate()
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
   public async _loadNextCommitBatch(repository: Repository): Promise<void> {
     const gitStore = this.gitStoreCache.get(repository)
 
+    const request = this.historyRequests.get(repository.id)
     const state = this.repositoryStateCache.get(repository)
-    const { formState, commitFilterText } = state.compareState
+    const { formState, commitFilterText, isCommitSearch } = state.compareState
 
     // A commit search is one query over the whole history, not a scroll-driven
     // page. Appending the next page here would mix non-matching commits into
     // the filtered result.
-    if (commitFilterText.trim().length > 0) {
+    if (isCommitSearch && commitFilterText.trim().length > 0) {
       return
     }
 
@@ -2048,7 +2115,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
         newCommits = await gitStore.loadCommitBatch('HEAD', commits.length)
       }
 
-      if (!newCommits) {
+      if (
+        !newCommits ||
+        this.historyRequests.get(repository.id) !== request ||
+        this.repositoryStateCache.get(repository).compareState.commitSHAs !==
+          commits
+      ) {
         return
       }
 

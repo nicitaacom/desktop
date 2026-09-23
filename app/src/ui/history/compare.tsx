@@ -20,7 +20,6 @@ import { TabBar } from '../tab-bar'
 import { CompareBranchListItem } from './compare-branch-list-item'
 import { FancyTextBox } from '../lib/fancy-text-box'
 import * as octicons from '../octicons/octicons.generated'
-import { Octicon } from '../octicons'
 import { Button } from '../lib/button'
 import { SelectionSource } from '../lib/filter-list'
 import { IMatches } from '../../lib/fuzzy-find'
@@ -134,6 +133,19 @@ export class CompareSidebar extends React.Component<
   }
 
   public componentDidUpdate(prevProps: ICompareSidebarProps) {
+    if (
+      prevProps.currentBranch?.name !== this.props.currentBranch?.name &&
+      this.props.compareState.isCommitSearch
+    ) {
+      this.commitSearchScheduler.clear()
+      this.props.dispatcher.updateCompareForm(this.props.repository, {
+        commitSearchLimit: 1000,
+      })
+      this.props.dispatcher.searchCommits(
+        this.props.repository,
+        this.props.compareState.commitFilterText
+      )
+    }
     const { showBranchList } = this.props.compareState
 
     if (showBranchList === prevProps.compareState.showBranchList) {
@@ -157,6 +169,18 @@ export class CompareSidebar extends React.Component<
     this.props.dispatcher.initializeCompare(this.props.repository)
   }
 
+  public componentDidMount() {
+    // Leaving History can cancel a debounced query. Resume it when returning,
+    // even if the branch tip and the cached result list haven't changed.
+    const { isCommitSearch, commitFilterText } = this.props.compareState
+    if (isCommitSearch && commitFilterText.trim().length > 0) {
+      this.props.dispatcher.searchCommits(
+        this.props.repository,
+        commitFilterText
+      )
+    }
+  }
+
   public componentWillUnmount() {
     this.textbox = null
     this.commitSearchScheduler.clear()
@@ -178,24 +202,15 @@ export class CompareSidebar extends React.Component<
 
     return (
       <div id="compare-view" role="tabpanel" aria-labelledby="history-tab">
-        <div className="compare-form">
-          <Button
-            className="search-mode-toggle"
-            onClick={this.onSearchModeToggled}
-            ariaPressed={isCommitSearch}
-            ariaLabel={
-              isCommitSearch
-                ? 'Searching commits, switch to comparing branches'
-                : 'Comparing branches, switch to searching commits'
-            }
-            tooltip={isCommitSearch ? 'Search commits' : 'Compare to a branch'}
-          >
-            <Octicon
-              symbol={isCommitSearch ? octicons.gitCommit : octicons.gitBranch}
-            />
+        <div className="history-search-actions">
+          <Button onClick={this.onSearchModeToggled}>
+            {isCommitSearch ? 'Compare branches' : 'Back to commit search'}
           </Button>
+        </div>
+        <div className="compare-form">
           <FancyTextBox
-            ariaLabel={isCommitSearch ? 'Commit filter' : 'Branch filter'}
+            key={isCommitSearch ? 'commits' : 'branches'}
+            ariaLabel={isCommitSearch ? 'Search commits' : 'Branch filter'}
             symbol={isCommitSearch ? octicons.search : octicons.gitBranch}
             displayClearButton={true}
             placeholder={placeholderText}
@@ -208,6 +223,18 @@ export class CompareSidebar extends React.Component<
             onSearchCleared={this.handleEscape}
           />
         </div>
+        {isCommitSearch &&
+          this.props.compareState.commitFilterText.trim() !== '' && (
+            <div className="commit-search-status" role="status">
+              {this.props.compareState.isSearchingCommits
+                ? 'Searching…'
+                : this.props.compareState.commitSearchFailed
+                ? 'Search failed. Try again.'
+                : `Searched ${formatNumber(
+                    this.props.compareState.commitSearchCount
+                  )} commits`}
+            </div>
+          )}
 
         {showBranchList ? this.renderFilterList() : this.renderCommits()}
       </div>
@@ -221,39 +248,39 @@ export class CompareSidebar extends React.Component<
     return isCommitSearch ? commitFilterText : filterText
   }
 
-  /**
-   * Flip the text box between filtering branches and searching commits. Leaving
-   * commit search puts the unfiltered history back; leaving branch mode drops
-   * the branch list so the commit list is what the box filters.
-   */
-  private onSearchModeToggled = () => {
-    const { isCommitSearch } = this.props.compareState
-
+  private onSearchModeToggled = async () => {
     this.commitSearchScheduler.clear()
-
-    if (isCommitSearch) {
-      this.props.dispatcher.searchCommits(this.props.repository, '')
+    const isCommitSearch = !this.props.compareState.isCommitSearch
+    this.props.dispatcher.updateCompareForm(this.props.repository, {
+      isCommitSearch,
+      showBranchList: !isCommitSearch,
+    })
+    await this.props.dispatcher.executeCompare(this.props.repository, {
+      kind: HistoryTabMode.History,
+    })
+    if (this.props.compareState.isCommitSearch !== isCommitSearch) {
+      return
+    }
+    if (!isCommitSearch) {
       this.props.dispatcher.updateCompareForm(this.props.repository, {
-        isCommitSearch: false,
-      })
-    } else {
-      // Commit search only applies to the history list, so a branch comparison
-      // in progress goes back to plain history first.
-      if (this.props.compareState.formState.kind === HistoryTabMode.Compare) {
-        this.viewHistoryForBranch()
-      }
-
-      this.props.dispatcher.updateCompareForm(this.props.repository, {
-        isCommitSearch: true,
-        filterText: '',
-        commitFilterText: '',
-        showBranchList: false,
+        showBranchList: true,
       })
     }
+    this.textbox?.focus()
+  }
 
-    if (this.textbox !== null) {
-      this.textbox.focus()
-    }
+  private onRetrySearch = () =>
+    this.searchDeeper(this.props.compareState.commitSearchLimit)
+
+  private searchDeeper = (commitSearchLimit: number) => {
+    this.commitSearchScheduler.clear()
+    this.props.dispatcher.updateCompareForm(this.props.repository, {
+      commitSearchLimit,
+    })
+    this.props.dispatcher.searchCommits(
+      this.props.repository,
+      this.props.compareState.commitFilterText
+    )
   }
 
   private onBranchesListRef = (branchList: BranchList | null) => {
@@ -292,16 +319,23 @@ export class CompareSidebar extends React.Component<
       isCommitSearch,
       commitFilterText,
       isSearchingCommits,
+      commitSearchLimit,
+      commitSearchFailed,
     } = this.props.compareState
 
     let emptyListMessage: string | JSX.Element
     if (isCommitSearch && commitFilterText.trim().length > 0) {
       emptyListMessage = isSearchingCommits ? (
         <p>Searching…</p>
+      ) : commitSearchFailed ? (
+        <Button onClick={this.onRetrySearch}>Retry search</Button>
       ) : (
-        <p>
-          No commits match <Ref>{commitFilterText}</Ref>
-        </p>
+        <div className="commit-search-empty">
+          <p>
+            No matches for <Ref>{commitFilterText}</Ref> in the latest{' '}
+            {formatNumber(commitSearchLimit)} commits.
+          </p>
+        </div>
       )
     } else if (formState.kind === HistoryTabMode.History) {
       emptyListMessage = 'No history'
@@ -328,7 +362,7 @@ export class CompareSidebar extends React.Component<
         gitHubRepository={this.props.repository.gitHubRepository}
         isLocalRepository={this.props.isLocalRepository}
         commitLookup={this.props.commitLookup}
-        commitSHAs={commitSHAs}
+        commitSHAs={isCommitSearch && isSearchingCommits ? [] : commitSHAs}
         searchText={isCommitSearch ? commitFilterText : undefined}
         selectedSHAs={this.props.selectedCommitShas}
         shasToHighlight={this.props.shasToHighlight}
@@ -654,6 +688,7 @@ export class CompareSidebar extends React.Component<
     // stops typing.
     this.props.dispatcher.updateCompareForm(this.props.repository, {
       commitFilterText,
+      commitSearchLimit: 1000,
     })
 
     this.commitSearchScheduler.queue(() => {
@@ -862,7 +897,7 @@ function getPlaceholderText(state: ICompareState) {
   const { branches, formState, isCommitSearch } = state
 
   if (isCommitSearch) {
-    return __DARWIN__ ? 'Search Commit Titles…' : 'Search commit titles…'
+    return 'Search commit titles or hashes…'
   }
 
   if (!branches.some(b => !b.isDesktopForkRemoteBranch)) {

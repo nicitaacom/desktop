@@ -41,6 +41,7 @@ import {
   deleteRef,
   getCommits,
   searchCommits,
+  ICommitSearchOptions,
   merge,
   setRemoteURL,
   getStatus,
@@ -239,31 +240,24 @@ export class GitStore extends BaseStore {
     return commits.map(c => c.sha)
   }
 
-  /**
-   * Find every commit reachable from `commitish` whose summary, body or author
-   * matches `searchText`, up to `CommitSearchLimit`. This is a single query over
-   * the whole history rather than one scroll-driven page, so there is no skip
-   * offset to keep in step with the filter.
-   */
-  public async searchCommitHistory(commitish: string, searchText: string) {
-    const requestKey = `history/search/${commitish}/${searchText}`
-    if (this.requestsInFight.has(requestKey)) {
-      return null
-    }
-
-    this.requestsInFight.add(requestKey)
-
-    const commits = await this.performFailableOperation(() =>
-      searchCommits(this.repository, commitish, searchText)
+  /** Search the latest commits reachable from a pinned revision. */
+  public async searchCommitHistory(
+    commitish: string,
+    searchText: string,
+    options: ICommitSearchOptions
+  ) {
+    const result = await this.performFailableOperation(() =>
+      searchCommits(this.repository, commitish, searchText, options)
     )
-
-    this.requestsInFight.delete(requestKey)
-    if (!commits) {
+    if (result == null) {
       return null
     }
-
-    this.storeCommits(commits)
-    return commits.map(c => c.sha)
+    this.storeCommits(result.commits)
+    return {
+      commitSHAs: result.commits.map(c => c.sha),
+      searchedCount: result.searchedCount,
+      hasMore: result.hasMore,
+    }
   }
 
   public async refreshTags() {

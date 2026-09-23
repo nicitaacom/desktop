@@ -943,13 +943,19 @@ export interface ICompareState {
   readonly filterText: string
 
   /**
-   * Whether the text box filters commits instead of branches. Toggled by the
-   * button inside the text box; `false` keeps the original branch behaviour.
+   * Whether the sidebar shows commit search or the separate branch comparison
+   * controls. Each mode preserves its own query.
    */
   readonly isCommitSearch: boolean
 
   /** The text the commit search is filtering the history by */
   readonly commitFilterText: string
+
+  readonly commitSearchLimit: number
+  readonly includeCommitDescriptions: boolean
+  readonly commitSearchCount: number
+  readonly commitSearchHasMore: boolean
+  readonly commitSearchFailed: boolean
 
   /** Whether a commit search git query is currently in flight */
   readonly isSearchingCommits: boolean
@@ -1002,6 +1008,8 @@ export interface ICompareFormUpdate {
 
   /** The updated commit search text to set */
   readonly commitFilterText: string
+  readonly commitSearchLimit: number
+  readonly includeCommitDescriptions: boolean
 }
 
 export interface IViewHistory {
