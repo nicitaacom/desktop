@@ -19,11 +19,16 @@ export type TerminalProps = ITerminalOptions &
   ITerminalInitOnlyOptions & {
     readonly terminalOutput?: TerminalOutput
     readonly hideCursor?: boolean
+    /** Fit columns to the container; optionally fill its height as well. */
+    readonly autoFit?: boolean
+    readonly fitHeight?: boolean
   }
 
 export class Terminal extends React.Component<TerminalProps> {
   private terminalRef = React.createRef<HTMLDivElement>()
   private terminal: XTermTerminal | null = null
+  private resizeObserver: ResizeObserver | null = null
+  private resizeFrame: number | null = null
 
   public get Terminal() {
     return this.terminal
@@ -38,16 +43,21 @@ export class Terminal extends React.Component<TerminalProps> {
   }
 
   public componentWillUnmount(): void {
+    this.resizeObserver?.disconnect()
+    if (this.resizeFrame !== null) {
+      cancelAnimationFrame(this.resizeFrame)
+    }
     this.terminal?.dispose()
   }
 
   public componentDidMount() {
-    const { terminalOutput, hideCursor, ...initOpts } = this.props
+    const { terminalOutput, hideCursor, autoFit, fitHeight, ...initOpts } =
+      this.props
     this.terminal = new XTermTerminal({
       ...defaultTerminalOptions,
       ...initOpts,
 
-      rows: this.props.rows ?? 20,
+      rows: fitHeight ? 1 : this.props.rows ?? 20,
       cols: this.props.cols ?? 80,
     })
 
@@ -87,14 +97,74 @@ export class Terminal extends React.Component<TerminalProps> {
 
       if (hideCursor !== false) {
         this.terminal.write('\x1b[?25l') // hide cursor
-        if (terminalOutput) {
-          this.write(terminalOutput)
-        }
+      }
+      if (terminalOutput) {
+        this.write(terminalOutput)
+      }
+      if (autoFit) {
+        this.resizeObserver = new ResizeObserver(this.scheduleFit)
+        this.resizeObserver.observe(this.terminalRef.current)
+        this.scheduleFit()
       }
     }
   }
 
+  public componentDidUpdate() {
+    if (this.props.autoFit) {
+      this.scheduleFit()
+    }
+  }
+
+  private scheduleFit = () => {
+    if (this.resizeFrame !== null) {
+      cancelAnimationFrame(this.resizeFrame)
+    }
+    this.resizeFrame = requestAnimationFrame(() => {
+      this.resizeFrame = null
+      const terminal = this.terminal
+      const container = this.terminalRef.current
+      const element = terminal?.element
+      const screen = element?.querySelector<HTMLElement>('.xterm-screen')
+      if (
+        !terminal ||
+        !container ||
+        !element ||
+        !screen ||
+        screen.clientWidth === 0 ||
+        screen.clientHeight === 0
+      ) {
+        return
+      }
+      const style = getComputedStyle(element)
+      const horizontalPadding =
+        parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+      const verticalPadding =
+        parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+      const cellWidth = screen.clientWidth / terminal.cols
+      const cellHeight = screen.clientHeight / terminal.rows
+      const viewport = element.querySelector<HTMLElement>('.xterm-viewport')
+      const scrollbar = viewport
+        ? viewport.offsetWidth - viewport.clientWidth
+        : 0
+      const cols = Math.max(
+        2,
+        Math.floor(
+          (container.clientWidth - horizontalPadding - scrollbar) / cellWidth
+        )
+      )
+      const rows = this.props.fitHeight
+        ? Math.max(
+            1,
+            Math.floor((container.clientHeight - verticalPadding) / cellHeight)
+          )
+        : this.props.rows ?? 20
+      if (cols !== terminal.cols || rows !== terminal.rows) {
+        terminal.resize(cols, rows)
+      }
+    })
+  }
+
   public render() {
-    return <div ref={this.terminalRef}></div>
+    return <div className="terminal-container" ref={this.terminalRef}></div>
   }
 }

@@ -1,4 +1,7 @@
 import * as React from 'react'
+import classNames from 'classnames'
+import { Octicon, screenFull, screenNormal } from './octicons'
+import { Button } from './lib/button'
 
 import {
   Dialog,
@@ -39,6 +42,7 @@ interface IAppErrorState {
    * This is used when the dialog is transitioning out of view.
    */
   readonly disabled: boolean
+  readonly isExpanded: boolean
 }
 
 /**
@@ -54,6 +58,7 @@ export class AppError extends React.Component<IAppErrorProps, IAppErrorState> {
     this.state = {
       error: props.error,
       disabled: false,
+      isExpanded: false,
     }
   }
 
@@ -63,7 +68,7 @@ export class AppError extends React.Component<IAppErrorProps, IAppErrorState> {
     // We keep the currently shown error until it has disappeared
     // from the first spot in the application error queue.
     if (error !== this.state.error) {
-      this.setState({ error, disabled: false })
+      this.setState({ error, disabled: false, isExpanded: false })
     }
   }
 
@@ -97,7 +102,15 @@ export class AppError extends React.Component<IAppErrorProps, IAppErrorState> {
     // If the error message is just the raw git output, display it in
     // fixed-width font
     if (isRawGitError(e)) {
-      return <Terminal terminalOutput={e.message} rows={15} cols={80} />
+      return (
+        <Terminal
+          terminalOutput={e.message}
+          rows={15}
+          cols={80}
+          autoFit={true}
+          fitHeight={this.state.isExpanded}
+        />
+      )
     }
 
     if (
@@ -285,6 +298,24 @@ export class AppError extends React.Component<IAppErrorProps, IAppErrorState> {
     return <DefaultDialogFooter onButtonClick={this.onCloseButtonClick} />
   }
 
+  private toggleExpanded = () => {
+    this.setState(state => ({ isExpanded: !state.isExpanded }))
+  }
+
+  private renderExpandButton = () => (
+    <Button
+      className="expand-error"
+      onClick={this.toggleExpanded}
+      ariaLabel={
+        this.state.isExpanded ? 'Restore error dialog' : 'Expand error dialog'
+      }
+      tooltip={this.state.isExpanded ? 'Restore' : 'Expand'}
+      ariaPressed={this.state.isExpanded}
+    >
+      <Octicon symbol={this.state.isExpanded ? screenNormal : screenFull} />
+    </Button>
+  )
+
   public render() {
     const error = this.state.error
 
@@ -302,9 +333,11 @@ export class AppError extends React.Component<IAppErrorProps, IAppErrorState> {
         onSubmit={this.props.onDismissed}
         onDismissed={this.props.onDismissed}
         disabled={this.state.disabled}
-        className={
-          isRawGitError(this.state.error) ? 'raw-git-error' : undefined
-        }
+        renderHeaderAccessory={this.renderExpandButton}
+        className={classNames({
+          'raw-git-error': isRawGitError(error),
+          'expanded-error': this.state.isExpanded,
+        })}
         role="alertdialog"
         ariaDescribedBy="app-error-description"
       >
