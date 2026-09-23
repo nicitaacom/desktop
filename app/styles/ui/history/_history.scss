@@ -32,6 +32,12 @@
     align-items: center;
     gap: var(--spacing-half);
     padding: var(--spacing-half);
+
+    .include-descriptions {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-half);
+    }
   }
 
   .commit-search-status {
@@ -42,6 +48,13 @@
   .commit-search-empty {
     padding: var(--spacing);
     text-align: center;
+  }
+
+  .commit-search-depths {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--spacing-half);
   }
 
   .compare-form {

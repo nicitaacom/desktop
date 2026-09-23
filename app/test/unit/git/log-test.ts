@@ -7,6 +7,7 @@ import {
   searchCommits,
 } from '../../../src/lib/git'
 import { setupFixtureRepository } from '../../helpers/repositories'
+import { makeCommit } from '../../helpers/repository-scaffolding'
 import { AppFileStatusKind } from '../../../src/models/status'
 import { setupLocalConfig } from '../../helpers/local-config'
 
@@ -140,6 +141,50 @@ describe('git/log', () => {
           [sha]
         )
       }
+    })
+
+    it('limits scanned commits, and finds an older match when expanded', async t => {
+      const path = await setupFixtureRepository(t, 'test-repo-with-tags')
+      const repository = new Repository(path, -1, null, false)
+      const shallow = await searchCommits(repository, 'HEAD', 'first', {
+        limit: 2,
+        includeDescriptions: false,
+      })
+      assert.equal(shallow.commits.length, 0)
+      assert.equal(shallow.searchedCount, 2)
+      assert.equal(shallow.hasMore, true)
+      const deep = await searchCommits(repository, 'HEAD', 'first', {
+        limit: 5,
+        includeDescriptions: false,
+      })
+      assert.equal(deep.commits.length, 1)
+      assert.equal(deep.searchedCount, 5)
+      assert.equal(deep.hasMore, false)
+    })
+
+    it('only includes body matches when descriptions are enabled', async t => {
+      const path = await setupFixtureRepository(t, 'test-repo-with-tags')
+      const repository = new Repository(path, -1, null, false)
+      await makeCommit(repository, {
+        entries: [{ path: 'description.txt', contents: 'description search' }],
+        commitMessage: 'A new title\n\nUnique résumé [body] needle',
+      })
+      const withoutBody = await searchCommits(
+        repository,
+        'HEAD',
+        'RÉSUMÉ [body]'
+      )
+      assert.equal(withoutBody.commits.length, 0)
+      const withBody = await searchCommits(
+        repository,
+        'HEAD',
+        'RÉSUMÉ [body]',
+        { limit: 1000, includeDescriptions: true }
+      )
+      assert.deepEqual(
+        withBody.commits.map(c => c.summary),
+        ['A new title']
+      )
     })
 
     it('returns each commit once', async t => {

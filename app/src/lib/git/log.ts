@@ -240,7 +240,8 @@ export async function searchCommits(
     commits: candidates.filter(
       c =>
         c.sha.toLowerCase().startsWith(needle) ||
-        c.summary.toLowerCase().includes(needle)
+        c.summary.toLowerCase().includes(needle) ||
+        (options.includeDescriptions && c.body.toLowerCase().includes(needle))
     ),
     searchedCount: candidates.length,
     hasMore: history.length > options.limit,

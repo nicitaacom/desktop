@@ -206,6 +206,16 @@ export class CompareSidebar extends React.Component<
           <Button onClick={this.onSearchModeToggled}>
             {isCommitSearch ? 'Compare branches' : 'Back to commit search'}
           </Button>
+          {isCommitSearch && (
+            <label className="include-descriptions">
+              <input
+                type="checkbox"
+                checked={this.props.compareState.includeCommitDescriptions}
+                onChange={this.onIncludeDescriptionsChanged}
+              />
+              Include descriptions
+            </label>
+          )}
         </div>
         <div className="compare-form">
           <FancyTextBox
@@ -269,8 +279,24 @@ export class CompareSidebar extends React.Component<
     this.textbox?.focus()
   }
 
+  private onIncludeDescriptionsChanged = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    this.commitSearchScheduler.clear()
+    this.props.dispatcher.updateCompareForm(this.props.repository, {
+      includeCommitDescriptions: event.currentTarget.checked,
+    })
+    this.props.dispatcher.searchCommits(
+      this.props.repository,
+      this.props.compareState.commitFilterText
+    )
+  }
+
   private onRetrySearch = () =>
     this.searchDeeper(this.props.compareState.commitSearchLimit)
+  private onSearch2000 = () => this.searchDeeper(2000)
+  private onSearch5000 = () => this.searchDeeper(5000)
+  private onSearch10000 = () => this.searchDeeper(10000)
 
   private searchDeeper = (commitSearchLimit: number) => {
     this.commitSearchScheduler.clear()
@@ -320,6 +346,7 @@ export class CompareSidebar extends React.Component<
       commitFilterText,
       isSearchingCommits,
       commitSearchLimit,
+      commitSearchHasMore,
       commitSearchFailed,
     } = this.props.compareState
 
@@ -335,6 +362,35 @@ export class CompareSidebar extends React.Component<
             No matches for <Ref>{commitFilterText}</Ref> in the latest{' '}
             {formatNumber(commitSearchLimit)} commits.
           </p>
+          {commitSearchHasMore && commitSearchLimit < 10000 ? (
+            <>
+              <p>Search further back:</p>
+              <div className="commit-search-depths">
+                {[2000, 5000, 10000]
+                  .filter(limit => limit > commitSearchLimit)
+                  .map(limit => (
+                    <Button
+                      key={limit}
+                      onClick={
+                        limit === 2000
+                          ? this.onSearch2000
+                          : limit === 5000
+                          ? this.onSearch5000
+                          : this.onSearch10000
+                      }
+                    >
+                      Search {formatNumber(limit)}
+                    </Button>
+                  ))}
+              </div>
+            </>
+          ) : (
+            <p>
+              {commitSearchHasMore
+                ? 'Reached the 10,000-commit search limit.'
+                : 'All commits on this branch were searched.'}
+            </p>
+          )}
         </div>
       )
     } else if (formState.kind === HistoryTabMode.History) {
