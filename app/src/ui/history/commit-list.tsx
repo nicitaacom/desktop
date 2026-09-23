@@ -598,6 +598,7 @@ export class CommitList extends React.Component<
           rowCount={commitSHAs.length}
           rowHeight={RowHeight}
           selectedRows={selectedRows}
+          scrollToRow={selectedRows[0]}
           rowRenderer={this.renderCommit}
           onDropDataInsertion={this.onDropDataInsertion}
           onSelectionChanged={this.onSelectionChanged}

@@ -76,6 +76,7 @@ export class FileList extends React.Component<IFileListProps, IFileListState> {
           rowCount={this.props.files.length}
           rowHeight={29}
           selectedRows={this.selectedRowsForFile()}
+          scrollToRow={this.selectedRowsForFile()[0]}
           onSelectedRowChanged={this.onSelectedRowChanged}
           onRowDoubleClick={this.props.onRowDoubleClick}
           onRowContextMenu={this.onRowContextMenu}

@@ -161,6 +161,10 @@ export class CompareSidebar extends React.Component<
     }
   }
 
+  public get isReorderingCommits() {
+    return this.state.keyboardReorderData !== undefined
+  }
+
   public focusHistory() {
     this.commitListRef.current?.focus()
   }

@@ -8,10 +8,12 @@ import { NoChanges } from './changes/no-changes'
 import { MultipleSelection } from './changes/multiple-selection'
 import { FilesChangedBadge } from './changes/files-changed-badge'
 import { SelectedCommits, CompareSidebar } from './history'
+import { getHistoryNavigation } from './history/navigation'
 import { Resizable } from './resizable'
 import { TabBar } from './tab-bar'
 import {
   IRepositoryState,
+  HistoryTabMode,
   RepositorySectionTab,
   ChangesSelectionKind,
   IConstrainedValue,
@@ -148,6 +150,8 @@ export class RepositoryView extends React.Component<
 
   private readonly changesSidebarRef = React.createRef<ChangesSidebar>()
   private readonly compareSidebarRef = React.createRef<CompareSidebar>()
+
+  private loadingHistoryForNavigation = false
 
   private focusHistoryNeeded: boolean = false
   private focusChangesNeeded: boolean = false
@@ -642,10 +646,12 @@ export class RepositoryView extends React.Component<
 
   public componentDidMount() {
     window.addEventListener('keydown', this.onGlobalKeyDown)
+    window.addEventListener('keydown', this.onHistoryKeyDown, true)
   }
 
   public componentWillUnmount() {
     window.removeEventListener('keydown', this.onGlobalKeyDown)
+    window.removeEventListener('keydown', this.onHistoryKeyDown, true)
   }
 
   public componentDidUpdate(): void {
@@ -657,6 +663,72 @@ export class RepositoryView extends React.Component<
     if (this.focusHistoryNeeded) {
       this.focusHistoryNeeded = false
       this.compareSidebarRef.current?.focusHistory()
+    }
+  }
+
+  private onHistoryKeyDown = (event: KeyboardEvent) => {
+    if (
+      this.props.state.selectedSection !== RepositorySectionTab.History ||
+      this.props.isShowingModal ||
+      this.props.isShowingFoldout ||
+      this.props.state.compareState.showBranchList ||
+      this.props.state.compareState.isSearchingCommits ||
+      this.compareSidebarRef.current?.isReorderingCommits
+    ) {
+      return
+    }
+    const navigation = getHistoryNavigation(event)
+    if (navigation === null) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    if (navigation.kind === 'commit') {
+      this.navigateHistoryCommit(navigation.direction)
+    } else {
+      const { file, changesetData } = this.props.state.commitSelection
+      const files = changesetData.files
+      const index = file === null ? -1 : files.findIndex(f => f.id === file.id)
+      const next = index < 0 ? 0 : index + navigation.direction
+      if (next >= 0 && next < files.length) {
+        this.props.dispatcher.changeFileSelection(
+          this.props.repository,
+          files[next]
+        )
+      }
+    }
+  }
+
+  private navigateHistoryCommit = async (direction: number) => {
+    const { repository, dispatcher, state } = this.props
+    const { commitSHAs, isCommitSearch, commitFilterText, formState } =
+      state.compareState
+    const selected = state.commitSelection.shas[0]
+    const index = commitSHAs.indexOf(selected)
+    const next = index < 0 ? 0 : index + direction
+    if (next >= 0 && next < commitSHAs.length) {
+      dispatcher.changeCommitSelection(repository, [commitSHAs[next]], true)
+      dispatcher.loadChangedFilesForCurrentSelection(repository)
+    } else if (
+      next === commitSHAs.length &&
+      direction > 0 &&
+      formState.kind === HistoryTabMode.History &&
+      !(isCommitSearch && commitFilterText.trim() !== '') &&
+      !this.loadingHistoryForNavigation
+    ) {
+      this.loadingHistoryForNavigation = true
+      try {
+        await dispatcher.loadNextCommitBatch(repository)
+        if (
+          this.props.repository.id === repository.id &&
+          this.props.state.commitSelection.shas[0] === selected &&
+          this.props.state.compareState.commitSHAs.length > commitSHAs.length
+        ) {
+          this.navigateHistoryCommit(direction)
+        }
+      } finally {
+        this.loadingHistoryForNavigation = false
+      }
     }
   }
 

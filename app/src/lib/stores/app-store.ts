@@ -2158,9 +2158,11 @@ export class AppStore extends TypedBaseStore<IAppState> {
     // The selection could have changed between when we started loading the
     // changed files and we finished. We might wanna store the changed files per
     // SHA/path.
+    const latestSelection =
+      this.repositoryStateCache.get(repository).commitSelection
     if (
-      commitSelection.shas.length !== currentSHAs.length ||
-      !commitSelection.shas.every((sha, i) => sha === currentSHAs[i])
+      latestSelection.shas.length !== currentSHAs.length ||
+      !latestSelection.shas.every((sha, i) => sha === currentSHAs[i])
     ) {
       return
     }
@@ -2168,12 +2170,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
     // if we're selecting a commit for the first time, we should select the
     // first file in the commit and render the diff immediately
 
-    const noFileSelected = commitSelection.file === null
+    const noFileSelected = latestSelection.file === null
 
     const firstFileOrDefault =
       noFileSelected && changesetData.files.length
         ? changesetData.files[0]
-        : commitSelection.file
+        : latestSelection.file
 
     this.repositoryStateCache.updateCommitSelection(repository, () => ({
       file: firstFileOrDefault,
