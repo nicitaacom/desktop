@@ -1,7 +1,6 @@
 /** History shortcuts also work inside the read-only diff's hidden textarea. */
 export function getHistoryNavigation(event: KeyboardEvent) {
   if (
-    event.defaultPrevented ||
     event.isComposing ||
     event.altKey ||
     event.ctrlKey ||

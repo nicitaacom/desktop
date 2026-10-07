@@ -671,9 +671,7 @@ export class RepositoryView extends React.Component<
       this.props.state.selectedSection !== RepositorySectionTab.History ||
       this.props.isShowingModal ||
       this.props.isShowingFoldout ||
-      this.props.state.compareState.showBranchList ||
-      this.props.state.compareState.isSearchingCommits ||
-      this.compareSidebarRef.current?.isReorderingCommits
+      this.props.state.compareState.showBranchList
     ) {
       return
     }
@@ -683,6 +681,7 @@ export class RepositoryView extends React.Component<
     }
     event.preventDefault()
     event.stopPropagation()
+    event.stopImmediatePropagation()
     if (navigation.kind === 'commit') {
       this.navigateHistoryCommit(navigation.direction)
     } else {
