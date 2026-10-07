@@ -768,7 +768,56 @@
   }
 
   .cm-diff-add-inner {
-    color: var(--diff-add-text-color) !important;
+    color: var(--diff-add-inner-text-color, var(--diff-add-text-color)) !important;
+
+    // Themes with a bright inline-add background can provide a matching dark
+    // syntax palette. The fallbacks preserve existing behavior for other themes.
+    .cm-variable {
+      color: var(--diff-add-inner-variable-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-keyword {
+      color: var(--diff-add-inner-keyword-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-atom {
+      color: var(--diff-add-inner-atom-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-quote {
+      color: var(--diff-add-inner-quote-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-variable-2,
+    .cm-variable-3 {
+      color: var(--diff-add-inner-alt-variable-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-comment,
+    .cm-meta {
+      color: var(--diff-add-inner-comment-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-string,
+    .cm-string-2 {
+      color: var(--diff-add-inner-string-color, var(--diff-add-text-color)) !important;
+
+      &.cm-property {
+        color: var(--diff-add-inner-string-color, var(--diff-add-text-color)) !important;
+      }
+    }
+    .cm-qualifier {
+      color: var(--diff-add-inner-qualifier-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-type {
+      color: var(--diff-add-inner-type-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-tag {
+      color: var(--diff-add-inner-tag-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-attribute {
+      color: var(--diff-add-inner-attribute-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-link {
+      color: var(--diff-add-inner-link-color, var(--diff-add-text-color)) !important;
+    }
+    .cm-header {
+      color: var(--diff-add-inner-header-color, var(--diff-add-text-color)) !important;
+    }
   }
 }
 
