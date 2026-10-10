@@ -82,6 +82,7 @@ describe('IPC channel contract', () => {
     'show-contextual-menu',
     'is-window-focused',
     'open-external',
+    'prepare-browser-authentication',
     'is-in-application-folder',
     'move-to-applications-folder',
     'check-for-updates',

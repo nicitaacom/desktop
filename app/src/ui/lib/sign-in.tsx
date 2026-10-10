@@ -67,6 +67,8 @@ export class SignIn extends React.Component<ISignInProps, {}> {
 
     return (
       <AuthenticationForm
+        loading={state.loading}
+        error={state.error}
         additionalButtons={children}
         onBrowserSignInRequested={this.onBrowserSignInRequested}
       />

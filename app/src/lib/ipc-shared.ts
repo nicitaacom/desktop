@@ -111,6 +111,7 @@ export type RequestResponseChannels = {
   ) => Promise<ReadonlyArray<number> | null>
   'is-window-focused': () => Promise<boolean>
   'open-external': (path: string) => Promise<boolean>
+  'prepare-browser-authentication': () => Promise<string | null>
   'is-in-application-folder': () => Promise<boolean | null>
   'move-to-applications-folder': () => Promise<void>
   'check-for-updates': (url: string) => Promise<Error | undefined>

@@ -133,7 +133,9 @@ export class SignIn extends React.Component<ISignInProps, ISignInState> {
         primaryButtonText = continueWithBrowserLabel
         break
       case SignInStep.Authentication:
-        primaryButtonText = continueWithBrowserLabel
+        primaryButtonText = state.error
+          ? 'Retry sign-in'
+          : continueWithBrowserLabel
         break
       default:
         return assertNever(state, `Unknown sign in step ${stepKind}`)

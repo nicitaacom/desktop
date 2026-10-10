@@ -169,6 +169,12 @@ export class Welcome extends React.Component<IWelcomeProps, IWelcomeState> {
             advance={this.advanceToStep}
             dispatcher={this.props.dispatcher}
             loadingBrowserAuth={loadingBrowserAuth}
+            browserAuthError={
+              step === WelcomeStep.SignInToDotComWithBrowser &&
+              signInState?.kind === SignInStep.Authentication
+                ? signInState.error
+                : null
+            }
           />
         )
 

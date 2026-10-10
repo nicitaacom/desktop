@@ -8,6 +8,7 @@ import { Button } from '../lib/button'
 import { Loading } from '../lib/loading'
 import { BrowserRedirectMessage } from '../lib/authentication-form'
 import { SamplesURL } from '../../lib/stats'
+import { Errors } from '../lib/errors'
 
 /**
  * The URL to the sign-up page on GitHub.com. Used in conjunction
@@ -20,6 +21,7 @@ interface IStartProps {
   readonly advance: (step: WelcomeStep) => void
   readonly dispatcher: Dispatcher
   readonly loadingBrowserAuth: boolean
+  readonly browserAuthError?: Error | null
 }
 
 /** The first step of the Welcome flow. */
@@ -47,6 +49,9 @@ export class Start extends React.Component<IStartProps, {}> {
             <p>{BrowserRedirectMessage}</p>
           )}
 
+          {this.props.browserAuthError && (
+            <Errors>{this.props.browserAuthError.message}</Errors>
+          )}
           <div className="welcome-main-buttons">
             <Button
               type="submit"
@@ -57,7 +62,9 @@ export class Start extends React.Component<IStartProps, {}> {
               role="link"
             >
               {this.props.loadingBrowserAuth && <Loading />}
-              Sign in to GitHub.com
+              {this.props.browserAuthError
+                ? 'Retry sign-in'
+                : 'Sign in to GitHub.com'}
               <Octicon symbol={octicons.linkExternal} />
             </Button>
             {this.props.loadingBrowserAuth ? (

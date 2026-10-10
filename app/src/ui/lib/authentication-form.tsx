@@ -3,12 +3,15 @@ import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
 import { Form } from './form'
 import { Button } from './button'
+import { Errors } from './errors'
 
 /** Text to let the user know their browser will send them back to GH Desktop */
 export const BrowserRedirectMessage =
   "Your browser will redirect you back to GitHub Desktop once you've signed in. If your browser asks for your permission to launch GitHub Desktop please allow it to."
 
 interface IAuthenticationFormProps {
+  readonly loading?: boolean
+  readonly error?: Error | null
   /**
    * A callback which is invoked if the user requests OAuth sign in using
    * their system configured browser.
@@ -39,6 +42,7 @@ export class AuthenticationForm extends React.Component<IAuthenticationFormProps
   private renderEndpointRequiresWebFlow() {
     return (
       <>
+        {this.props.error && <Errors>{this.props.error.message}</Errors>}
         {BrowserRedirectMessage}
         <Button
           type="submit"
@@ -46,8 +50,9 @@ export class AuthenticationForm extends React.Component<IAuthenticationFormProps
           onClick={this.signInWithBrowser}
           autoFocus={true}
           role="link"
+          disabled={this.props.loading}
         >
-          Sign in using your browser
+          {this.props.error ? 'Retry sign-in' : 'Sign in using your browser'}
           <Octicon symbol={octicons.linkExternal} />
         </Button>
         {this.props.additionalButtons}
@@ -57,6 +62,8 @@ export class AuthenticationForm extends React.Component<IAuthenticationFormProps
 
   private signInWithBrowser = (event?: React.MouseEvent<HTMLButtonElement>) => {
     event?.preventDefault()
-    this.props.onBrowserSignInRequested()
+    if (!this.props.loading) {
+      this.props.onBrowserSignInRequested()
+    }
   }
 }

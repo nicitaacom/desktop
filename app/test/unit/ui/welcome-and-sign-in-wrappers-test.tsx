@@ -13,6 +13,7 @@ import type { Dispatcher } from '../../../src/ui/dispatcher'
 import { ConfigureGit } from '../../../src/ui/welcome/configure-git'
 import { SignInEnterprise } from '../../../src/ui/welcome/sign-in-enterprise'
 import { SignIn } from '../../../src/ui/lib/sign-in'
+import { Start } from '../../../src/ui/welcome/start'
 import { fireEvent, render, screen } from '../../helpers/ui/render'
 
 function noopResultCallback() {}
@@ -73,6 +74,50 @@ function createExistingAccountWarningState(): IExistingAccountWarning {
 }
 
 describe('welcome and sign-in wrappers', () => {
+  it('shows an authentication error and offers Retry in the welcome form', () => {
+    const dispatcher = new TestDispatcher()
+    const state = createAuthenticationState('https://api.github.com')
+    render(
+      <SignIn
+        signInState={{ ...state, error: new Error('Please repair login') }}
+        dispatcher={toDispatcher(dispatcher)}
+      />
+    )
+    assert.equal(screen.getByRole('alert').textContent, 'Please repair login')
+    fireEvent.click(screen.getByRole('link', { name: /Retry sign-in/ }))
+    assert.equal(dispatcher.browserSignInCount, 1)
+  })
+
+  it('shows browser errors on the GitHub.com welcome screen', () => {
+    render(
+      <Start
+        advance={() => {}}
+        dispatcher={toDispatcher(new TestDispatcher())}
+        loadingBrowserAuth={false}
+        browserAuthError={new Error('Could not prepare GitHub login')}
+      />
+    )
+    assert.equal(
+      screen.getByRole('alert').textContent,
+      'Could not prepare GitHub login'
+    )
+    assert.ok(screen.getByRole('link', { name: /Retry sign-in/ }))
+  })
+
+  it('disables a repeated browser request while authentication is loading', () => {
+    const dispatcher = new TestDispatcher()
+    const state = createAuthenticationState('https://api.github.com')
+    render(
+      <SignIn
+        signInState={{ ...state, loading: true }}
+        dispatcher={toDispatcher(dispatcher)}
+      />
+    )
+    fireEvent.click(
+      screen.getByRole('link', { name: /Sign in using your browser/ })
+    )
+    assert.equal(dispatcher.browserSignInCount, 0)
+  })
   it('submits enterprise endpoints through the shared sign-in wrapper', () => {
     const dispatcher = new TestDispatcher()
 

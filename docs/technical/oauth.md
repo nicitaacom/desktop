@@ -24,3 +24,23 @@ environment variables:
 
  - `DESKTOP_OAUTH_CLIENT_ID`
  - `DESKTOP_OAUTH_CLIENT_SECRET`
+
+## Linux browser callbacks
+
+The custom build uses `github-desktop-commit-search.desktop` as its Linux
+desktop identity. Before opening browser sign-in, it repairs that launcher in
+`$XDG_DATA_HOME/applications` (or `~/.local/share/applications`) to point to the
+running executable and declares both GitHub authentication schemes. Existing
+launcher names, icons, and other MIME types are preserved.
+
+It refreshes the desktop database, selects the current build's authentication
+scheme using `xdg-mime`, and verifies the selected handler. These operations
+require `xdg-utils`, `desktop-file-utils`, and a writable user application
+directory. Registration uses `xdg-mime` because Electron 42's `xdg-settings`
+implementation does not support URL scheme handlers on XFCE.
+
+Callback URLs are processed both at startup and when another instance forwards
+its arguments to the running app. OAuth state must match the active sign-in
+request; cancelled requests and duplicate callbacks cannot finish a new session.
+Registration, browser, and API failures appear in the sign-in UI with a retry
+action. A fresh sign-in repairs associations changed by another installation.

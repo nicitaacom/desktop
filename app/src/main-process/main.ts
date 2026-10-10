@@ -51,6 +51,17 @@ import {
 import { initializeDesktopNotifications } from './notifications'
 import parseCommandLineArgs from 'minimist'
 import { CLIAction } from '../lib/cli-action'
+import { findAppURL, getAuthenticationProtocol } from '../lib/app-protocols'
+import {
+  LinuxDesktopName,
+  prepareLinuxAuthentication,
+} from './linux-protocol-handler'
+
+if (__LINUX__) {
+  // Electron 42 uses CHROME_DESKTOP for protocol registration. Keep it in
+  // agreement with the package desktopName even when launched via Electron.
+  process.env.CHROME_DESKTOP = LinuxDesktopName
+}
 
 app.setAppLogsPath()
 enableSourceMaps()
@@ -103,9 +114,9 @@ function getExtraErrorContext(): Record<string, string> {
 const protocolLauncherArg = '--protocol-launcher'
 
 const possibleProtocols = new Set(['x-github-client'])
-if (__DEV_SECRETS__) {
+possibleProtocols.add(getAuthenticationProtocol())
+if (__LINUX__) {
   possibleProtocols.add('x-github-desktop-dev-auth')
-} else {
   possibleProtocols.add('x-github-desktop-auth')
 }
 // Also support Desktop Classic's protocols.
@@ -236,6 +247,14 @@ if (__DARWIN__) {
 }
 
 async function handleCommandLineArguments(argv: string[]) {
+  if (__LINUX__) {
+    const url = findAppURL(argv, possibleProtocols)
+    if (url !== undefined) {
+      handleAppURL(url)
+      return
+    }
+  }
+
   const args = parseCommandLineArgs(argv, {
     boolean: ['protocol-launcher'],
   })
@@ -330,7 +349,9 @@ app.on('ready', () => {
 
   readyTime = now() - launchTime
 
-  possibleProtocols.forEach(protocol => setAsDefaultProtocolClient(protocol))
+  if (!__LINUX__) {
+    possibleProtocols.forEach(protocol => setAsDefaultProtocolClient(protocol))
+  }
 
   createWindow()
 
@@ -594,6 +615,28 @@ app.on('ready', () => {
       log.error(`Call to openExternal failed: '${e}'`)
       return false
     }
+  })
+
+  let preparingAuthentication: Promise<string | null> | undefined
+  ipcMain.handle('prepare-browser-authentication', async () => {
+    if (!__LINUX__) {
+      return null
+    }
+
+    preparingAuthentication ??= prepareLinuxAuthentication({
+      executablePath: process.execPath,
+      appPath: process.defaultApp ? app.getAppPath() : undefined,
+      protocol: getAuthenticationProtocol(),
+    })
+      .then(() => null)
+      .catch(e => {
+        log.error('Failed preparing the Linux login callback', e)
+        return 'Could not prepare GitHub login on this computer. Check that your user application folder is writable and that xdg-mime and update-desktop-database are installed, then retry sign-in.'
+      })
+      .finally(() => {
+        preparingAuthentication = undefined
+      })
+    return preparingAuthentication
   })
 
   /**

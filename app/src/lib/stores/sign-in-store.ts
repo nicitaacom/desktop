@@ -20,6 +20,21 @@ import { IOAuthAction } from '../parse-app-url'
 import { shell } from '../app-shell'
 import noop from 'lodash/noop'
 import { AccountsStore } from './accounts-store'
+import { invoke } from '../ipc-renderer'
+
+interface IBrowserAuthentication {
+  readonly prepare: () => Promise<string | null>
+  readonly openBrowser: (url: string) => Promise<boolean>
+  readonly requestToken: typeof requestOAuthToken
+  readonly fetchUser: typeof fetchUser
+}
+
+const browserAuthentication: IBrowserAuthentication = {
+  prepare: () => invoke('prepare-browser-authentication'),
+  openBrowser: url => shell.openExternal(url),
+  requestToken: requestOAuthToken,
+  fetchUser,
+}
 
 /**
  * An enumeration of the possible steps that the sign in
@@ -125,6 +140,7 @@ export interface IAuthenticationState extends ISignInState {
   readonly oauthState?: {
     state: string
     endpoint: string
+    callbackReceived: boolean
     onAuthCompleted: (account: Account) => void
     onAuthError: (error: Error) => void
   }
@@ -158,7 +174,10 @@ export class SignInStore extends TypedBaseStore<SignInState | null> {
 
   private accounts: ReadonlyArray<Account> = []
 
-  public constructor(private readonly accountStore: AccountsStore) {
+  public constructor(
+    private readonly accountStore: AccountsStore,
+    private readonly authentication: IBrowserAuthentication = browserAuthentication
+  ) {
     super()
 
     this.accountStore.getAll().then(accounts => {
@@ -170,9 +189,10 @@ export class SignInStore extends TypedBaseStore<SignInState | null> {
   }
 
   private emitAuthenticate(account: Account) {
+    const resultCallback = this.state?.resultCallback
     const event: IAuthenticationEvent = { account }
     this.emitter.emit('did-authenticate', event)
-    this.state?.resultCallback({ kind: 'success', account })
+    resultCallback?.({ kind: 'success', account })
   }
 
   /**
@@ -211,7 +231,9 @@ export class SignInStore extends TypedBaseStore<SignInState | null> {
    */
   public reset() {
     const currentState = this.state
-    this.state?.resultCallback({ kind: 'cancelled' })
+    if (currentState?.kind !== SignInStep.Success) {
+      currentState?.resultCallback({ kind: 'cancelled' })
+    }
     this.setState(null)
 
     if (currentState?.kind === SignInStep.Authentication) {
@@ -270,63 +292,85 @@ export class SignInStore extends TypedBaseStore<SignInState | null> {
       )
     }
 
-    this.setState({ ...currentState, loading: true })
-
-    if (currentState.kind === SignInStep.ExistingAccountWarning) {
-      const { existingAccount } = currentState
-      // Try to avoid emitting an error out of AccountsStore if the account
-      // is already gone.
-      if (this.accounts.find(x => x.endpoint === existingAccount.endpoint)) {
-        await this.accountStore.removeAccount(existingAccount)
-      }
+    if (currentState.loading) {
+      return
     }
 
     const csrfToken = crypto.randomUUID()
+    const { endpoint, resultCallback } = currentState
+    const isCurrentRequest = () =>
+      this.state?.kind === SignInStep.Authentication &&
+      this.state.oauthState === oauthState
+    const oauthState = {
+      state: csrfToken,
+      endpoint,
+      callbackReceived: false,
+      onAuthCompleted: (account: Account) => {
+        if (isCurrentRequest()) {
+          log.info('[SignInStore] account resolved')
+          this.emitAuthenticate(account)
+          if (isCurrentRequest()) {
+            this.setState({ kind: SignInStep.Success, resultCallback })
+          }
+        }
+      },
+      onAuthError: (error: Error) => {
+        if (isCurrentRequest()) {
+          this.setState({
+            kind: SignInStep.Authentication,
+            endpoint,
+            resultCallback,
+            error,
+            loading: false,
+          })
+        }
+      },
+    }
 
-    new Promise<Account>((resolve, reject) => {
-      const { endpoint, resultCallback } = currentState
-      log.info('[SignInStore] initializing OAuth flow')
-      this.setState({
-        kind: SignInStep.Authentication,
-        endpoint,
-        resultCallback,
-        error: null,
-        loading: true,
-        oauthState: {
-          state: csrfToken,
-          endpoint,
-          onAuthCompleted: resolve,
-          onAuthError: reject,
-        },
-      })
-      shell.openExternal(getOAuthAuthorizationURL(endpoint, csrfToken))
+    log.info('[SignInStore] initializing OAuth flow')
+    this.setState({
+      kind: SignInStep.Authentication,
+      endpoint,
+      resultCallback,
+      error: null,
+      loading: true,
+      oauthState,
     })
-      .then(account => {
-        if (!this.state || this.state.kind !== SignInStep.Authentication) {
-          // Looks like the sign in flow has been aborted
-          log.warn('[SignInStore] account resolved but session has changed')
-          return
-        }
 
-        log.info('[SignInStore] account resolved')
-        this.emitAuthenticate(account)
-        this.setState({
-          kind: SignInStep.Success,
-          resultCallback: this.state.resultCallback,
-        })
-      })
-      .catch(e => {
-        // Make sure we're still in the same sign in session
-        if (
-          this.state?.kind === SignInStep.Authentication &&
-          this.state.oauthState?.state === csrfToken
-        ) {
-          log.info('[SignInStore] error with OAuth flow', e)
-          this.setState({ ...this.state, error: e, loading: false })
-        } else {
-          log.info(`[SignInStore] OAuth error but session has changed: ${e}`)
+    try {
+      const error = await this.authentication.prepare()
+      if (!isCurrentRequest()) {
+        return
+      }
+      if (error !== null) {
+        throw new Error(error)
+      }
+
+      if (currentState.kind === SignInStep.ExistingAccountWarning) {
+        const { existingAccount } = currentState
+        if (this.accounts.some(x => x.endpoint === existingAccount.endpoint)) {
+          await this.accountStore.removeAccount(existingAccount)
         }
-      })
+      }
+      if (!isCurrentRequest()) {
+        return
+      }
+
+      const opened = await this.authentication.openBrowser(
+        getOAuthAuthorizationURL(endpoint, csrfToken)
+      )
+      if (!opened) {
+        throw new Error(
+          'Could not open your browser. Check your default browser and retry sign-in.'
+        )
+      }
+    } catch (e) {
+      oauthState.onAuthError(
+        e instanceof Error
+          ? e
+          : new Error('Could not start GitHub sign-in. Please retry.')
+      )
+    }
   }
 
   public async resolveOAuthRequest(action: IOAuthAction) {
@@ -345,15 +389,33 @@ export class SignInStore extends TypedBaseStore<SignInState | null> {
       return
     }
 
-    const { endpoint } = this.state
-    const token = await requestOAuthToken(endpoint, action.code)
+    const { endpoint, oauthState } = this.state
+    if (oauthState.callbackReceived) {
+      return
+    }
+    oauthState.callbackReceived = true
 
-    if (token) {
-      const account = await fetchUser(endpoint, token)
-      this.state.oauthState.onAuthCompleted(account)
-    } else {
-      this.state.oauthState.onAuthError(
-        new Error('Failed retrieving authenticated user')
+    try {
+      const token = await this.authentication.requestToken(
+        endpoint,
+        action.code
+      )
+      if (
+        this.state?.kind !== SignInStep.Authentication ||
+        this.state.oauthState !== oauthState
+      ) {
+        return
+      }
+      if (!token) {
+        throw new Error('Could not complete GitHub sign-in. Please retry.')
+      }
+      const account = await this.authentication.fetchUser(endpoint, token)
+      oauthState.onAuthCompleted(account)
+    } catch {
+      oauthState.onAuthError(
+        new Error(
+          'Could not complete GitHub sign-in. Check your connection and retry.'
+        )
       )
     }
   }
