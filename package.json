@@ -5,6 +5,7 @@
   },
   "description": "GitHub Desktop build dependencies",
   "scripts": {
+    "install:linux": "bash script/install-linux.sh",
     "cli": "ts-node app/src/cli/main.ts",
     "check:eslint": "tsc -P eslint-rules/",
     "test:eslint": "node script/test.mjs eslint-rules",

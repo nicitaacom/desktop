@@ -2,6 +2,7 @@
 /// <reference path="./globals.d.ts" />
 
 import * as cp from 'child_process'
+import { createHash } from 'crypto'
 import packager, { OfficialArch, OsxNotarizeOptions } from 'electron-packager'
 import frontMatter from 'front-matter'
 import * as os from 'os'
@@ -9,6 +10,7 @@ import * as path from 'path'
 import { getPrintenvzPath } from 'printenvz'
 import { getProxyCommandPath } from 'process-proxy'
 import { externals } from '../app/webpack.common'
+import { getSHA } from '../app/git-info'
 
 interface IChooseALicense {
   readonly title: string
@@ -126,6 +128,30 @@ verifyInjectedSassVariables(outRoot)
     process.exit(1)
   })
   .then(appPaths => {
+    if (process.platform === 'linux' && !shouldSkipPackaging) {
+      for (const appPath of appPaths) {
+        const files: Record<string, string> = {}
+        for (const name of ['main.js', 'renderer.js', 'renderer.css']) {
+          const key = `resources/app/${name}`
+          files[key] = createHash('sha256')
+            .update(readFileSync(join(appPath, key)))
+            .digest('hex')
+        }
+        writeFileSync(
+          join(appPath, 'build-info.json'),
+          JSON.stringify(
+            {
+              sourceRepository: 'https://github.com/nicitaacom/desktop.git',
+              sourceCommit: getSHA(),
+              builtAt: new Date().toISOString(),
+              files,
+            },
+            null,
+            2
+          ) + '\n'
+        )
+      }
+    }
     console.log(`Built to ${appPaths}`)
   })
 

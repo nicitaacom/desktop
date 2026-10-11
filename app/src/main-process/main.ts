@@ -8,6 +8,7 @@ import {
   session,
   systemPreferences,
   nativeTheme,
+  dialog,
 } from 'electron'
 import * as Fs from 'fs'
 
@@ -56,6 +57,11 @@ import {
   LinuxDesktopName,
   prepareLinuxAuthentication,
 } from './linux-protocol-handler'
+import {
+  LinuxInstalledExecutable,
+  saveLinuxBuildRecord,
+  verifyLinuxInstallation,
+} from './linux-installation'
 
 if (__LINUX__) {
   // Electron 42 uses CHROME_DESKTOP for protocol registration. Keep it in
@@ -179,6 +185,7 @@ function handleAppURL(url: string) {
 }
 
 let isDuplicateInstance = false
+let relaunchingInstalledBuild = false
 // If we're handling a Squirrel event we don't want to enforce single instance.
 // We want to let the updated instance launch and do its work. It will then quit
 // once it's done.
@@ -186,7 +193,30 @@ if (!handlingSquirrelEvent) {
   const gotSingleInstanceLock = app.requestSingleInstanceLock()
   isDuplicateInstance = !gotSingleInstanceLock
 
-  app.on('second-instance', (event, args, workingDirectory) => {
+  app.on('second-instance', async (event, args, workingDirectory) => {
+    if (__LINUX__) {
+      if (relaunchingInstalledBuild) {
+        return
+      }
+      const installationError = await verifyLinuxInstallation(
+        process.execPath,
+        app.getAppPath(),
+        __SHA__
+      )
+      if (installationError !== null) {
+        // A manual /opt replacement must not focus an old process still in memory.
+        relaunchingInstalledBuild = true
+        app.relaunch({
+          execPath: LinuxInstalledExecutable,
+          args: [
+            ...args.slice(1),
+            `--user-data-dir=${app.getPath('userData')}`,
+          ],
+        })
+        app.exit(0)
+        return
+      }
+    }
     // Someone tried to run a second instance, we should focus our window.
     if (mainWindow) {
       if (mainWindow.isMinimized()) {
@@ -342,9 +372,27 @@ if (process.env.GITHUB_DESKTOP_DISABLE_HARDWARE_ACCELERATION) {
   app.disableHardwareAcceleration()
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
   if (isDuplicateInstance || handlingSquirrelEvent) {
     return
+  }
+
+  if (__LINUX__) {
+    const installationError = await verifyLinuxInstallation(
+      process.execPath,
+      app.getAppPath(),
+      __SHA__,
+      undefined,
+      saveLinuxBuildRecord
+    )
+    if (installationError !== null) {
+      dialog.showErrorBox(
+        'GitHub Desktop needs installation',
+        installationError
+      )
+      app.exit(1)
+      return
+    }
   }
 
   readyTime = now() - launchTime
