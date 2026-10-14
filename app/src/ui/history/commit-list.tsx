@@ -29,6 +29,7 @@ import { formatDate } from '../../lib/format-date'
 import { Avatar } from '../lib/avatar'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
+import { getHistoryNavigation } from './navigation'
 
 const RowHeight = 50
 
@@ -77,6 +78,9 @@ interface ICommitListProps {
     commits: ReadonlyArray<Commit>,
     isContiguous: boolean
   ) => void
+
+  /** History's single-commit navigation, including loading the next batch. */
+  readonly onNavigateCommit?: (direction: number) => void
 
   /** Callback that fires when a scroll event has occurred */
   readonly onScroll?: (start: number, end: number) => void
@@ -252,6 +256,25 @@ export class CommitList extends React.Component<
     super(props)
 
     this.state = { reorderingMessage: '' }
+  }
+
+  private onKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || this.props.onNavigateCommit === undefined) {
+      return
+    }
+
+    const navigation = getHistoryNavigation(event.nativeEvent)
+    if (navigation?.kind !== 'commit') {
+      return
+    }
+
+    // The window shortcut can defer while a foldout or dialog is closing.
+    // If the key still reaches History's commit list, consume it before List
+    // interprets Shift+Arrow as range selection. Use the same navigation path
+    // as the window shortcut so filtered results and pagination stay intact.
+    event.preventDefault()
+    event.stopPropagation()
+    this.props.onNavigateCommit(navigation.direction)
   }
 
   public componentDidUpdate(prevProps: ICommitListProps) {
@@ -589,7 +612,12 @@ export class CommitList extends React.Component<
       .filter(r => r !== -1)
 
     return (
-      <div id="commit-list" className={classes} ref={this.containerRef}>
+      <div
+        id="commit-list"
+        className={classes}
+        ref={this.containerRef}
+        onKeyDownCapture={this.onKeyDownCapture}
+      >
         {this.renderReorderCommitsHint()}
         <List
           ariaLabel="Commits"

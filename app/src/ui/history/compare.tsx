@@ -51,6 +51,7 @@ interface ICompareSidebarProps {
   readonly onAmendCommit: (commit: Commit, isLocalCommit: boolean) => void
   readonly onViewCommitOnGitHub: (sha: string) => void
   readonly onCompareListScrolled: (scrollTop: number) => void
+  readonly onNavigateCommit: (direction: number) => void
   readonly onCherryPick: (
     repository: Repository,
     commits: ReadonlyArray<CommitOneLine>
@@ -442,6 +443,7 @@ export class CompareSidebar extends React.Component<
         }
         onAmendCommit={this.props.onAmendCommit}
         onCommitsSelected={this.onCommitsSelected}
+        onNavigateCommit={this.props.onNavigateCommit}
         onScroll={this.onScroll}
         onCreateBranch={this.onCreateBranch}
         onCheckoutCommit={this.onCheckoutCommit}
